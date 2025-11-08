@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
+import StockAlertBanner from '@/components/StockAlertBanner'
 
 interface DashboardStats {
   inventarioTotal: number
@@ -121,6 +122,9 @@ export default function DashboardPage() {
           Resumen general del sistema de gestión Granimar CR
         </p>
       </div>
+
+      {/* Stock Alerts Banner */}
+      <StockAlertBanner />
 
       {/* Stats Cards */}
       <div className="grid-cards-4">

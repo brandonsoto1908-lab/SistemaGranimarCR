@@ -52,16 +52,53 @@ export default function NuevoRetiroDiscoPage() {
   }, [])
 
   useEffect(() => {
-    // Filtrar discos en tiempo real
+    // Filtrar discos en tiempo real con búsqueda inteligente
     if (searchDisco.trim() === '') {
       setFilteredDiscos(discos)
     } else {
-      const filtered = discos.filter(disco =>
-        disco.nombre.toLowerCase().includes(searchDisco.toLowerCase()) ||
-        disco.tipo.toLowerCase().includes(searchDisco.toLowerCase()) ||
-        (disco.marca && disco.marca.toLowerCase().includes(searchDisco.toLowerCase()))
-      )
-      setFilteredDiscos(filtered)
+      const searchTerms = searchDisco.toLowerCase().trim().split(/\s+/)
+      
+      const filtered = discos.filter(disco => {
+        const searchableText = [
+          disco.nombre,
+          disco.tipo,
+          disco.marca || '',
+          disco.material_compatible || ''
+        ].join(' ').toLowerCase()
+
+        // Buscar todas las palabras ingresadas
+        return searchTerms.every(term => searchableText.includes(term))
+      })
+
+      // Ordenar por relevancia
+      const sorted = filtered.sort((a, b) => {
+        const aText = `${a.nombre} ${a.tipo} ${a.material_compatible || ''}`.toLowerCase()
+        const bText = `${b.nombre} ${b.tipo} ${b.material_compatible || ''}`.toLowerCase()
+        const searchLower = searchDisco.toLowerCase()
+
+        // Priorizar coincidencias exactas al inicio
+        const aStartsWith = aText.startsWith(searchLower) ? 1 : 0
+        const bStartsWith = bText.startsWith(searchLower) ? 1 : 0
+        
+        if (aStartsWith !== bStartsWith) {
+          return bStartsWith - aStartsWith
+        }
+
+        // Priorizar por nombre > tipo > material
+        const aNameMatch = a.nombre.toLowerCase().includes(searchLower) ? 3 : 0
+        const bNameMatch = b.nombre.toLowerCase().includes(searchLower) ? 3 : 0
+        const aTipoMatch = a.tipo.toLowerCase().includes(searchLower) ? 2 : 0
+        const bTipoMatch = b.tipo.toLowerCase().includes(searchLower) ? 2 : 0
+        const aMaterialMatch = (a.material_compatible || '').toLowerCase().includes(searchLower) ? 1 : 0
+        const bMaterialMatch = (b.material_compatible || '').toLowerCase().includes(searchLower) ? 1 : 0
+
+        const aScore = aNameMatch + aTipoMatch + aMaterialMatch
+        const bScore = bNameMatch + bTipoMatch + bMaterialMatch
+
+        return bScore - aScore
+      })
+
+      setFilteredDiscos(sorted)
     }
   }, [searchDisco, discos])
 
@@ -200,10 +237,13 @@ export default function NuevoRetiroDiscoPage() {
                         className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
                       >
                         <div className="font-medium text-gray-900">{disco.nombre}</div>
-                        <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 mt-1 text-sm flex-wrap">
                           <span className="badge badge-secondary badge-sm">{disco.tipo}</span>
-                          {disco.marca && <span>{disco.marca}</span>}
-                          <span className="text-teal-600 font-medium">
+                          {disco.marca && <span className="text-gray-600">{disco.marca}</span>}
+                          {disco.material_compatible && (
+                            <span className="badge badge-info badge-sm">{disco.material_compatible}</span>
+                          )}
+                          <span className="text-teal-600 font-medium ml-auto">
                             {formatNumber(disco.cantidad)} disponibles
                           </span>
                         </div>
