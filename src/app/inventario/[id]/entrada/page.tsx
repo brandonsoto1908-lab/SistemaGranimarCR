@@ -4,16 +4,17 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { getMonthYear } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Save, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { formatCurrency, formatNumber } from '@/lib/utils'
 
 interface Material {
   id: string
   nombre: string
-  unidad_medida: string | null
-  cantidad_actual: number
+  cantidad_laminas: number
+  precio_costo: number
+  imagen_url: string | null
 }
 
 export default function EntradaMaterialPage() {
@@ -23,12 +24,14 @@ export default function EntradaMaterialPage() {
   const [loading, setLoading] = useState(false)
   const [material, setMaterial] = useState<Material | null>(null)
   const [formData, setFormData] = useState({
-    cantidad: 0,
-    precio_unitario: 0,
+    cantidad_laminas: 0,
+    precio_costo: 0,
     motivo: '',
-    referencia: '',
-    usuario: '',
+    proveedor: '',
+    factura: '',
   })
+
+  const LAMINA_ML = 3.22 // metros lineales por lámina
 
   useEffect(() => {
     if (materialId) {
@@ -40,59 +43,50 @@ export default function EntradaMaterialPage() {
     try {
       const { data, error } = await supabase
         .from('materiales')
-        .select('id, nombre, unidad_medida, cantidad_actual')
+        .select('id, nombre, cantidad_laminas, precio_costo, imagen_url')
         .eq('id', materialId)
         .single()
 
       if (error) throw error
       setMaterial(data)
+      // Pre-cargar el precio de costo actual
+      setFormData(prev => ({ ...prev, precio_costo: data.precio_costo || 0 }))
     } catch (error) {
       console.error('Error fetching material:', error)
       toast.error('Error al cargar material')
+      router.push('/inventario')
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (formData.cantidad <= 0) {
-      toast.error('La cantidad debe ser mayor a 0')
+    if (formData.cantidad_laminas <= 0) {
+      toast.error('La cantidad de láminas debe ser mayor a 0')
+      return
+    }
+
+    if (!formData.motivo.trim()) {
+      toast.error('El motivo es requerido')
       return
     }
 
     setLoading(true)
     try {
-      // Crear movimiento
-      // @ts-ignore
-      const { error: movimientoError } = await supabase
-        .from('materiales_movimientos')
-        .insert([{
-          material_id: materialId,
-          tipo_movimiento: 'entrada',
-          cantidad: formData.cantidad,
-          precio_unitario: formData.precio_unitario || null,
-          motivo: formData.motivo || null,
-          referencia: formData.referencia || null,
-          usuario: formData.usuario || null,
-        }])
-
-      if (movimientoError) throw movimientoError
-
-      // Actualizar cantidad del material
-      const nuevaCantidad = (material?.cantidad_actual || 0) + formData.cantidad
-      // @ts-ignore
+      // Actualizar stock y precio del material
+      const nuevaCantidad = (material?.cantidad_laminas || 0) + formData.cantidad_laminas
+      
       const { error: updateError } = await supabase
         .from('materiales')
         .update({ 
-          cantidad_actual: nuevaCantidad,
-          precio_unitario: formData.precio_unitario || (material as any)?.precio_unitario,
-          updated_at: new Date().toISOString()
+          cantidad_laminas: nuevaCantidad,
+          precio_costo: formData.precio_costo || material?.precio_costo || 0,
         })
         .eq('id', materialId)
 
       if (updateError) throw updateError
 
-      toast.success('Entrada registrada exitosamente')
+      toast.success(`Entrada registrada: +${formData.cantidad_laminas} láminas`)
       router.push('/inventario')
     } catch (error: any) {
       console.error('Error creating entrada:', error)
@@ -100,6 +94,16 @@ export default function EntradaMaterialPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'cantidad_laminas' || name === 'precio_costo' 
+        ? parseFloat(value) || 0 
+        : value
+    }))
   }
 
   if (!material) {
@@ -111,87 +115,160 @@ export default function EntradaMaterialPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/inventario" className="btn btn-ghost">
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <div>
+        <div className="flex-1">
           <h1 className="page-title">Entrada de Material</h1>
-          <p className="page-subtitle">{material.nombre}</p>
+          <p className="page-subtitle">Registrar ingreso de láminas</p>
         </div>
       </div>
 
-      {/* Current Stock */}
-      <div className="alert alert-info">
-        <div>
-          <strong>Stock Actual:</strong> {material.cantidad_actual} {material.unidad_medida || 'unidades'}
+      {/* Material Info Card */}
+      <div className="card">
+        <div className="card-body">
+          <div className="flex items-center gap-4">
+            {material.imagen_url ? (
+              <img
+                src={material.imagen_url}
+                alt={material.nombre}
+                className="w-20 h-20 object-cover rounded border border-gray-200"
+              />
+            ) : (
+              <div className="w-20 h-20 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                <Plus className="w-8 h-8 text-gray-400" />
+              </div>
+            )}
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-gray-900">{material.nombre}</h2>
+              <div className="mt-2 flex gap-6 text-sm">
+                <div>
+                  <span className="text-gray-600">Stock Actual:</span>
+                  <span className="ml-2 font-semibold text-gray-900">
+                    {material.cantidad_laminas} láminas
+                  </span>
+                  <span className="ml-1 text-gray-500">
+                    ({(material.cantidad_laminas * LAMINA_ML).toFixed(2)} ml)
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Precio Costo:</span>
+                  <span className="ml-2 font-semibold text-gray-900">
+                    {formatCurrency(material.precio_costo)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="card">
-        <div className="card-body space-y-4">
+        <div className="card-header">
+          <h3 className="text-lg font-semibold">Datos de la Entrada</h3>
+        </div>
+        <div className="card-body space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label">
+                Cantidad de Láminas <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                name="cantidad_laminas"
+                value={formData.cantidad_laminas}
+                onChange={handleChange}
+                className="input"
+                min="1"
+                step="1"
+                required
+              />
+              <p className="text-sm text-gray-600 mt-1">
+                = {(formData.cantidad_laminas * LAMINA_ML).toFixed(2)} metros lineales
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Precio de Costo (por lámina)</label>
+              <input
+                type="number"
+                name="precio_costo"
+                value={formData.precio_costo}
+                onChange={handleChange}
+                className="input"
+                step="0.01"
+                min="0"
+              />
+              <p className="text-sm text-gray-600 mt-1">
+                {formatCurrency(formData.precio_costo)}
+              </p>
+            </div>
+          </div>
+
+          {/* Preview del nuevo stock */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-900">Nuevo Stock</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {material.cantidad_laminas + formData.cantidad_laminas} láminas
+                </p>
+                <p className="text-sm text-blue-700">
+                  {((material.cantidad_laminas + formData.cantidad_laminas) * LAMINA_ML).toFixed(2)} metros lineales
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-blue-700">Ingresando</p>
+                <p className="text-xl font-semibold text-green-600">
+                  +{formData.cantidad_laminas} láminas
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div>
-            <label className="label label-required">Cantidad a Ingresar</label>
+            <label className="label">
+              Motivo <span className="text-red-500">*</span>
+            </label>
             <input
-              type="number"
-              value={formData.cantidad}
-              onChange={(e) => setFormData({ ...formData, cantidad: parseFloat(e.target.value) || 0 })}
+              type="text"
+              name="motivo"
+              value={formData.motivo}
+              onChange={handleChange}
               className="input"
-              step="0.01"
-              min="0"
+              placeholder="Ej: Compra a proveedor, Devolución de cliente, Ajuste de inventario"
               required
             />
-            <p className="text-sm text-gray-600 mt-1">
-              Nuevo stock: {(material.cantidad_actual + formData.cantidad).toFixed(2)} {material.unidad_medida}
-            </p>
           </div>
 
-          <div>
-            <label className="label">Precio Unitario (₡)</label>
-            <input
-              type="number"
-              value={formData.precio_unitario}
-              onChange={(e) => setFormData({ ...formData, precio_unitario: parseFloat(e.target.value) || 0 })}
-              className="input"
-              step="0.01"
-              min="0"
-            />
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Proveedor</label>
+              <input
+                type="text"
+                name="proveedor"
+                value={formData.proveedor}
+                onChange={handleChange}
+                className="input"
+                placeholder="Nombre del proveedor"
+              />
+            </div>
 
-          <div>
-            <label className="label">Motivo</label>
-            <input
-              type="text"
-              value={formData.motivo}
-              onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
-              className="input"
-              placeholder="Ej: Compra, Devolución, Ajuste"
-            />
-          </div>
-
-          <div>
-            <label className="label">Referencia (Factura/Orden)</label>
-            <input
-              type="text"
-              value={formData.referencia}
-              onChange={(e) => setFormData({ ...formData, referencia: e.target.value })}
-              className="input"
-              placeholder="Número de factura u orden de compra"
-            />
-          </div>
-
-          <div>
-            <label className="label">Usuario</label>
-            <input
-              type="text"
-              value={formData.usuario}
-              onChange={(e) => setFormData({ ...formData, usuario: e.target.value })}
-              className="input"
-              placeholder="Nombre de quien registra"
-            />
+            <div>
+              <label className="label">Factura/Orden</label>
+              <input
+                type="text"
+                name="factura"
+                value={formData.factura}
+                onChange={handleChange}
+                className="input"
+                placeholder="Número de factura"
+              />
+            </div>
           </div>
         </div>
 
@@ -202,7 +279,7 @@ export default function EntradaMaterialPage() {
           <button type="submit" disabled={loading} className="btn btn-success">
             {loading ? (
               <>
-                <div className="spinner spinner-sm"></div>
+                <div className="spinner"></div>
                 Guardando...
               </>
             ) : (

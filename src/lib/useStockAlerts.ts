@@ -20,44 +20,23 @@ export function useStockAlerts() {
       const { data: materiales } = await supabase
         .from('materiales')
         .select('*')
-        .order('cantidad', { ascending: true })
+        .order('cantidad_laminas', { ascending: true })
 
       if (materiales) {
         materiales.forEach(material => {
-          if (shouldAlert(material.cantidad, 'materiales')) {
+          if (shouldAlert(material.cantidad_laminas)) {
             newAlerts.push({
               tipo: 'material',
               id: material.id,
               nombre: material.nombre,
-              cantidadActual: material.cantidad,
-              limiteMinimo: STOCK_LIMITS.materiales,
-              material: material.material,
+              cantidadActual: material.cantidad_laminas,
             })
           }
         })
       }
 
-      // Verificar sobrantes
-      const { data: sobrantes } = await supabase
-        .from('materiales')
-        .select('*')
-        .eq('es_sobrante', true)
-        .order('cantidad', { ascending: true })
-
-      if (sobrantes) {
-        sobrantes.forEach(sobrante => {
-          if (shouldAlert(sobrante.cantidad, 'sobrantes')) {
-            newAlerts.push({
-              tipo: 'sobrante',
-              id: sobrante.id,
-              nombre: `${sobrante.nombre} (Sobrante)`,
-              cantidadActual: sobrante.cantidad,
-              limiteMinimo: STOCK_LIMITS.sobrantes,
-              material: sobrante.material,
-            })
-          }
-        })
-      }
+      // Por ahora no hay sobrantes en esta estructura
+      // Se puede agregar después si se necesita
 
       // Verificar discos y herramientas
       const { data: discos } = await supabase
@@ -67,13 +46,12 @@ export function useStockAlerts() {
 
       if (discos) {
         discos.forEach(disco => {
-          if (shouldAlert(disco.cantidad, 'discos')) {
+          if (shouldAlert(disco.cantidad)) {
             newAlerts.push({
               tipo: 'disco',
               id: disco.id,
               nombre: disco.nombre,
               cantidadActual: disco.cantidad,
-              limiteMinimo: STOCK_LIMITS.discos,
               categoria: disco.tipo,
               material: disco.material_compatible,
             })
@@ -84,17 +62,20 @@ export function useStockAlerts() {
       setAlerts(newAlerts)
       setLastCheck(new Date())
 
-      // Enviar email solo si hay alertas nuevas y no se ha enviado en las últimas 24 horas
+      // Enviar email inmediatamente si hay productos sin stock
       if (newAlerts.length > 0) {
-        const lastEmailSent = localStorage.getItem('lastStockAlertEmail')
-        const now = new Date().getTime()
-        const oneDay = 24 * 60 * 60 * 1000 // 24 horas en milisegundos
-
-        if (!lastEmailSent || now - parseInt(lastEmailSent) > oneDay) {
+        console.log('🚫 Productos sin stock detectados:', newAlerts.length)
+        console.log('📧 Enviando email de alerta...')
+        
+        try {
           const emailSent = await sendStockAlertEmail(newAlerts)
           if (emailSent) {
-            localStorage.setItem('lastStockAlertEmail', now.toString())
+            console.log('✅ Email enviado exitosamente')
+          } else {
+            console.error('❌ Error al enviar email')
           }
+        } catch (error) {
+          console.error('❌ Error al intentar enviar email:', error)
         }
       }
 

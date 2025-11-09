@@ -14,7 +14,7 @@ export async function POST(request: Request) {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: 'Granimar CR <alertas@granimarkr.com>', // Debes usar un dominio verificado
+        from: 'Granimar CR <onboarding@resend.dev>', // Email de prueba de Resend
         to: [to],
         subject: subject,
         html: html,

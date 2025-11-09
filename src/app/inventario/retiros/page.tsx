@@ -12,17 +12,25 @@ interface Material {
   id: string
   nombre: string
   cantidad_laminas: number
+  precio_costo: number
   precio_venta: number
 }
 
 interface Retiro {
   id: string
   material_id: string
-  cantidad: number
-  motivo: string | null
-  proyecto: string | null
+  tipo_retiro: 'laminas_completas' | 'metros_lineales'
+  cantidad_laminas: number
+  metros_lineales: number
+  proyecto: string
+  cliente: string | null
+  usuario: string
+  descripcion: string | null
+  costo_total: number
+  precio_venta_total: number
+  ganancia: number
+  uso_sobrantes: boolean
   fecha_retiro: string
-  usuario: string | null
   created_at: string
   materiales?: Material
 }
@@ -49,6 +57,7 @@ export default function RetirosPage() {
             id,
             nombre,
             cantidad_laminas,
+            precio_costo,
             precio_venta
           )
         `)
@@ -103,17 +112,16 @@ export default function RetirosPage() {
     return (
       retiro.materiales?.nombre?.toLowerCase().includes(searchLower) ||
       retiro.proyecto?.toLowerCase().includes(searchLower) ||
-      retiro.motivo?.toLowerCase().includes(searchLower) ||
+      retiro.descripcion?.toLowerCase().includes(searchLower) ||
       retiro.usuario?.toLowerCase().includes(searchLower)
     )
   })
 
   // Calcular totales
-  const totalRetiros = filteredRetiros.reduce((sum, r) => sum + r.cantidad, 0)
-  const valorTotal = filteredRetiros.reduce((sum, r) => {
-    const precio = r.materiales?.precio_venta || 0
-    return sum + (r.cantidad * precio)
+  const totalRetiros = filteredRetiros.reduce((sum, r) => {
+    return sum + (r.tipo_retiro === 'laminas_completas' ? r.cantidad_laminas : Math.ceil(r.metros_lineales / 3.22))
   }, 0)
+  const valorTotal = filteredRetiros.reduce((sum, r) => sum + r.precio_venta_total, 0)
 
   return (
     <div className="space-y-6">
@@ -263,11 +271,12 @@ export default function RetirosPage() {
                 <tr>
                   <th>Fecha</th>
                   <th>Material</th>
+                  <th>Tipo</th>
                   <th>Cantidad</th>
                   <th>Proyecto</th>
-                  <th>Motivo</th>
                   <th>Usuario</th>
                   <th>Valor</th>
+                  <th>Ganancia</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -288,31 +297,61 @@ export default function RetirosPage() {
                       <div className="font-medium text-gray-900">
                         {retiro.materiales?.nombre || 'Material eliminado'}
                       </div>
+                      {retiro.descripcion && (
+                        <div className="text-xs text-gray-500 truncate max-w-xs">
+                          {retiro.descripcion}
+                        </div>
+                      )}
                     </td>
                     <td>
-                      <span className="badge badge-info">
-                        {formatNumber(retiro.cantidad)} láminas
+                      <span className={`badge ${retiro.tipo_retiro === 'laminas_completas' ? 'badge-info' : 'badge-warning'}`}>
+                        {retiro.tipo_retiro === 'laminas_completas' ? 'Láminas' : 'Metros'}
                       </span>
+                      {retiro.uso_sobrantes && (
+                        <div className="text-xs text-green-600 mt-1">+ Sobrantes</div>
+                      )}
                     </td>
                     <td>
-                      <div className="text-gray-900">
-                        {retiro.proyecto || '-'}
-                      </div>
+                      {retiro.tipo_retiro === 'laminas_completas' ? (
+                        <span className="font-medium text-gray-900">
+                          {formatNumber(retiro.cantidad_laminas)} lám.
+                        </span>
+                      ) : (
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {formatNumber(retiro.metros_lineales)} ml
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            ({Math.ceil(retiro.metros_lineales / 3.22)} lám.)
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td>
-                      <div className="text-gray-600 text-sm max-w-xs truncate">
-                        {retiro.motivo || '-'}
+                      <div className="text-gray-900 font-medium">
+                        {retiro.proyecto}
                       </div>
+                      {retiro.cliente && (
+                        <div className="text-xs text-gray-500">{retiro.cliente}</div>
+                      )}
                     </td>
                     <td>
                       <div className="flex items-center gap-2 text-gray-600">
                         <User className="w-4 h-4" />
-                        {retiro.usuario || 'Sistema'}
+                        {retiro.usuario}
                       </div>
                     </td>
                     <td>
                       <div className="font-medium text-gray-900">
-                        {formatCurrency((retiro.materiales?.precio_venta || 0) * retiro.cantidad)}
+                        {formatCurrency(retiro.precio_venta_total)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Costo: {formatCurrency(retiro.costo_total)}
+                      </div>
+                    </td>
+                    <td>
+                      <div className={`font-medium ${retiro.ganancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(retiro.ganancia)}
                       </div>
                     </td>
                     <td>

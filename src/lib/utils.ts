@@ -1,9 +1,9 @@
 // Formatear números a moneda
 export const formatCurrency = (value: number): string => {
-  return new Intl.NumberFormat('es-CR', {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'CRC',
-    minimumFractionDigits: 0,
+    currency: 'USD',
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
 }

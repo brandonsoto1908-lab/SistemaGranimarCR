@@ -11,12 +11,23 @@ import toast from 'react-hot-toast'
 interface Material {
   id: string
   nombre: string
-  categoria: string | null
-  unidad_medida: string | null
-  cantidad_actual: number
-  cantidad_minima: number | null
-  precio_unitario: number | null
-  ubicacion_fisica: string | null
+  cantidad_laminas: number
+  precio_costo: number | null
+  precio_venta: number | null
+  precio_lineal: number | null
+  precio_por_metro: number | null
+  imagen_url: string | null
+  created_at: string
+  // Campos calculados de sobrantes
+  sobros_metros?: number
+  sobros_count?: number
+}
+
+interface Sobro {
+  id: string
+  material_id: string
+  metros_lineales: number
+  usado: boolean
   created_at: string
 }
 
@@ -25,8 +36,13 @@ export default function InventarioPage() {
   const [filteredMateriales, setFilteredMateriales] = useState<Material[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterCategoria, setFilterCategoria] = useState<string>('')
-  const [categorias, setCategorias] = useState<string[]>([])
+  const [sobros, setSobros] = useState<Sobro[]>([])
+  
+  // Constantes de conversión
+  const LAMINA_LARGO = 3.22 // metros
+  const LAMINA_ANCHO = 1.60 // metros
+  const LAMINA_M2 = LAMINA_LARGO * LAMINA_ANCHO // 5.152 m²
+  const LAMINA_ML = LAMINA_LARGO // 3.22 metros lineales
 
   useEffect(() => {
     fetchMateriales()
@@ -34,22 +50,42 @@ export default function InventarioPage() {
 
   useEffect(() => {
     filterMateriales()
-  }, [searchTerm, filterCategoria, materiales])
+  }, [searchTerm, materiales])
 
   const fetchMateriales = async () => {
     try {
-      const { data, error } = await supabase
+      // Obtener materiales
+      const { data: materialesData, error: materialesError } = await supabase
         .from('materiales')
         .select('*')
         .order('nombre')
 
-      if (error) throw error
+      if (materialesError) throw materialesError
 
-      setMateriales(data || [])
-      
-      // Extraer categorías únicas
-      const cats = Array.from(new Set(data?.map(m => m.categoria).filter(Boolean) as string[]))
-      setCategorias(cats)
+      // Obtener todos los sobrantes no usados
+      const { data: sobrosData, error: sobrosError } = await supabase
+        .from('sobros')
+        .select('*')
+        .eq('usado', false)
+
+      if (sobrosError) throw sobrosError
+
+      setSobros(sobrosData || [])
+
+      // Calcular totales de sobrantes por material
+      const materialesConSobros = (materialesData || []).map(material => {
+        const sobrosDelMaterial = (sobrosData || []).filter(s => s.material_id === material.id)
+        const sobros_metros = sobrosDelMaterial.reduce((sum, s) => sum + parseFloat(s.metros_lineales || 0), 0)
+        const sobros_count = sobrosDelMaterial.length
+
+        return {
+          ...material,
+          sobros_metros: sobros_metros,
+          sobros_count: sobros_count
+        }
+      })
+
+      setMateriales(materialesConSobros)
     } catch (error: any) {
       console.error('Error fetching materiales:', error)
       toast.error('Error al cargar materiales')
@@ -63,27 +99,20 @@ export default function InventarioPage() {
 
     if (searchTerm) {
       filtered = filtered.filter(m =>
-        m.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.categoria?.toLowerCase().includes(searchTerm.toLowerCase()))
+        m.nombre.toLowerCase().includes(searchTerm.toLowerCase())
       )
-    }
-
-    if (filterCategoria) {
-      filtered = filtered.filter(m => m.categoria === filterCategoria)
     }
 
     setFilteredMateriales(filtered)
   }
 
   const getStockBadge = (material: Material) => {
-    const level = getStockLevel(material.cantidad_actual, material.cantidad_minima)
-    const badges = {
-      high: 'badge-success',
-      medium: 'badge-info',
-      low: 'badge-warning',
-      critical: 'badge-danger',
-    }
-    return badges[level]
+    // Stock mínimo fijo de 2 láminas
+    const stockMinimo = 2
+    if (material.cantidad_laminas === 0) return 'badge-danger'
+    if (material.cantidad_laminas < stockMinimo) return 'badge-warning'
+    if (material.cantidad_laminas < stockMinimo * 2) return 'badge-info'
+    return 'badge-success'
   }
 
   if (loading) {
@@ -111,45 +140,26 @@ export default function InventarioPage() {
       {/* Filters */}
       <div className="card">
         <div className="card-body">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="label">Buscar</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar por nombre o categoría..."
+                  placeholder="Buscar por nombre..."
                   className="input pl-10"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
             </div>
-            <div>
-              <label className="label">Categoría</label>
-              <div className="relative">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <select
-                  className="input pl-10"
-                  value={filterCategoria}
-                  onChange={(e) => setFilterCategoria(e.target.value)}
-                >
-                  <option value="">Todas las categorías</option>
-                  {categorias.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
             <div className="flex items-end">
               <button
-                onClick={() => {
-                  setSearchTerm('')
-                  setFilterCategoria('')
-                }}
+                onClick={() => setSearchTerm('')}
                 className="btn btn-ghost w-full"
               >
-                Limpiar Filtros
+                Limpiar Búsqueda
               </button>
             </div>
           </div>
@@ -165,24 +175,24 @@ export default function InventarioPage() {
         <div className="stat-card">
           <p className="stat-label">Stock Bajo</p>
           <p className="stat-value text-amber-600">
-            {materiales.filter(m => 
-              m.cantidad_minima && m.cantidad_actual < m.cantidad_minima
-            ).length}
+            {materiales.filter(m => m.cantidad_laminas < 2).length}
           </p>
         </div>
         <div className="stat-card">
-          <p className="stat-label">Valor Total</p>
+          <p className="stat-label">Valor Total (Costo)</p>
           <p className="stat-value">
             {formatCurrency(
               materiales.reduce((sum, m) => 
-                sum + (m.cantidad_actual * (m.precio_unitario || 0)), 0
+                sum + (m.cantidad_laminas * (m.precio_costo || 0)), 0
               )
             )}
           </p>
         </div>
         <div className="stat-card">
-          <p className="stat-label">Categorías</p>
-          <p className="stat-value">{categorias.length}</p>
+          <p className="stat-label">Total Láminas</p>
+          <p className="stat-value">
+            {materiales.reduce((sum, m) => sum + m.cantidad_laminas, 0)}
+          </p>
         </div>
       </div>
 
@@ -193,10 +203,11 @@ export default function InventarioPage() {
             <thead>
               <tr>
                 <th>Material</th>
-                <th>Categoría</th>
-                <th>Stock Actual</th>
-                <th>Stock Mínimo</th>
-                <th>Precio Unit.</th>
+                <th>Stock (Láminas)</th>
+                <th>Sobrantes</th>
+                <th>Precio Costo</th>
+                <th>Precio Venta</th>
+                <th>Precio Lineal</th>
                 <th>Valor Total</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -205,7 +216,7 @@ export default function InventarioPage() {
             <tbody>
               {filteredMateriales.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-gray-500">
+                  <td colSpan={9} className="text-center py-8 text-gray-500">
                     No se encontraron materiales
                   </td>
                 </tr>
@@ -213,55 +224,69 @@ export default function InventarioPage() {
                 filteredMateriales.map((material) => (
                   <tr key={material.id}>
                     <td>
-                      <div>
+                      <div className="flex items-center gap-3">
+                        {material.imagen_url ? (
+                          <img
+                            src={material.imagen_url}
+                            alt={material.nombre}
+                            className="w-10 h-10 object-cover rounded border border-gray-200"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                            <Package className="w-5 h-5 text-gray-400" />
+                          </div>
+                        )}
                         <div className="font-medium text-gray-900">
                           {material.nombre}
                         </div>
-                        {material.ubicacion_fisica && (
-                          <div className="text-xs text-gray-500">
-                            📍 {material.ubicacion_fisica}
-                          </div>
-                        )}
                       </div>
                     </td>
                     <td>
-                      {material.categoria && (
-                        <span className="badge badge-primary">
-                          {material.categoria}
+                      <span className="font-semibold">
+                        {material.cantidad_laminas} láminas
+                      </span>
+                      <div className="text-xs text-gray-500">
+                        {(material.cantidad_laminas * LAMINA_ML).toFixed(2)} ml
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-teal-600">
+                          {material.sobros_count || 0} piezas
                         </span>
-                      )}
+                        <span className="text-xs text-gray-500">
+                          {(material.sobros_metros || 0).toFixed(2)} ml
+                        </span>
+                      </div>
                     </td>
-                    <td>
-                      {formatNumber(material.cantidad_actual, 2)}{' '}
-                      {material.unidad_medida}
-                    </td>
-                    <td>
-                      {material.cantidad_minima 
-                        ? `${formatNumber(material.cantidad_minima, 2)} ${material.unidad_medida}`
-                        : '-'
-                      }
-                    </td>
-                    <td>{formatCurrency(material.precio_unitario || 0)}</td>
+                    <td>{formatCurrency(material.precio_costo || 0)}</td>
+                    <td>{formatCurrency(material.precio_venta || 0)}</td>
+                    <td>{formatCurrency(material.precio_lineal || 0)}</td>
                     <td>
                       {formatCurrency(
-                        material.cantidad_actual * (material.precio_unitario || 0)
+                        material.cantidad_laminas * (material.precio_costo || 0)
                       )}
                     </td>
                     <td>
                       <span className={`badge ${getStockBadge(material)}`}>
-                        {material.cantidad_minima && material.cantidad_actual < material.cantidad_minima
+                        {material.cantidad_laminas === 0 
+                          ? 'Sin Stock'
+                          : material.cantidad_laminas < 2
                           ? 'Stock Bajo'
                           : 'Normal'
                         }
                       </span>
                     </td>
                     <td>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <Link
-                          href={`/inventario/${material.id}`}
+                          href={`/inventario/${material.id}/editar`}
                           className="btn btn-sm btn-ghost"
                         >
-                          Ver
+                          Editar
                         </Link>
                         <Link
                           href={`/inventario/${material.id}/entrada`}

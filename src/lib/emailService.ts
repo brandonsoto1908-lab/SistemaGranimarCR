@@ -77,11 +77,11 @@ export async function sendStockAlertEmail(alerts: StockAlert[]): Promise<boolean
       <body>
         <div class="container">
           <div class="header">
-            <h1 style="margin: 0;">⚠️ Alerta de Stock Bajo - Granimar CR</h1>
+            <h1 style="margin: 0;">🚫 Alerta: Productos Sin Stock - Granimar CR</h1>
           </div>
           <div class="content">
             <p>Hola,</p>
-            <p>Se han detectado <span class="count">${alerts.length}</span> producto(s) con stock bajo en el inventario:</p>
+            <p>Se han detectado <span class="count">${alerts.length}</span> producto(s) SIN STOCK en el inventario:</p>
             
             ${alerts.map(alert => `
               <div class="alert">
@@ -91,9 +91,7 @@ export async function sendStockAlertEmail(alerts: StockAlert[]): Promise<boolean
                     '⚙️ Disco/Herramienta'}: ${alert.nombre}
                 </div>
                 <div class="alert-details">
-                  Stock actual: <strong>${alert.cantidadActual}</strong> unidades
-                  <br>
-                  Límite mínimo: <strong>${alert.limiteMinimo}</strong> unidades
+                  <strong style="color: #dc2626;">🚫 SIN STOCK (0 unidades)</strong>
                   ${alert.categoria ? `<br>Categoría: ${alert.categoria}` : ''}
                   ${alert.material ? `<br>Material: ${alert.material}` : ''}
                 </div>
@@ -121,6 +119,9 @@ export async function sendStockAlertEmail(alerts: StockAlert[]): Promise<boolean
   `
 
   try {
+    console.log('📧 Intentando enviar email a:', ALERT_EMAIL)
+    console.log('📊 Alertas a enviar:', alerts.length)
+    
     // Usar la API de Resend o cualquier servicio de email
     const response = await fetch('/api/send-email', {
       method: 'POST',
@@ -129,27 +130,30 @@ export async function sendStockAlertEmail(alerts: StockAlert[]): Promise<boolean
       },
       body: JSON.stringify({
         to: ALERT_EMAIL,
-        subject: `⚠️ Alerta: ${alerts.length} producto(s) con stock bajo - Granimar CR`,
+        subject: `🚫 URGENTE: ${alerts.length} producto(s) SIN STOCK - Granimar CR`,
         html: htmlContent,
       }),
     })
 
     if (!response.ok) {
-      console.error('Error sending email:', await response.text())
+      const errorText = await response.text()
+      console.error('❌ Error enviando email:', errorText)
       return false
     }
 
+    const result = await response.json()
+    console.log('✅ Email enviado exitosamente:', result)
     return true
   } catch (error) {
-    console.error('Error sending email:', error)
+    console.error('❌ Error en sendStockAlertEmail:', error)
     return false
   }
 }
 
 // Función alternativa usando un servicio de email simple (EmailJS, etc.)
 export function generateEmailBody(alerts: StockAlert[]): string {
-  let body = `ALERTA DE STOCK BAJO - Granimar CR\n\n`
-  body += `Se han detectado ${alerts.length} producto(s) con stock bajo:\n\n`
+  let body = `🚫 ALERTA: PRODUCTOS SIN STOCK - Granimar CR\n\n`
+  body += `Se han detectado ${alerts.length} producto(s) SIN STOCK:\n\n`
   
   alerts.forEach((alert, index) => {
     body += `${index + 1}. ${formatStockAlert(alert)}\n`
@@ -158,7 +162,7 @@ export function generateEmailBody(alerts: StockAlert[]): string {
     body += `\n`
   })
   
-  body += `\nPor favor, revisa el inventario y considera hacer un pedido de reposición.\n`
+  body += `\n⚠️ URGENTE: Por favor, revisa el inventario y realiza un pedido de reposición inmediatamente.\n`
   body += `\nAccede al sistema: http://localhost:3001/inventario`
   
   return body

@@ -45,52 +45,57 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
-      const currentDate = new Date()
-      const currentMonth = currentDate.getMonth() + 1
-      const currentYear = currentDate.getFullYear()
+      // Get start and end of current month
+      const now = new Date()
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
 
-      // Obtener materiales bajo stock
+      // Obtener todos los materiales
       const { data: materiales, error: materialesError } = await supabase
         .from('materiales')
-        .select('*')
+        .select('id, nombre, cantidad_laminas, precio_costo')
         .order('nombre')
 
       if (materialesError) throw materialesError
 
-      // Filtrar materiales bajo stock
-      const bajoStock = materiales?.filter(
-        (m) => m.cantidad_minima && m.cantidad_actual < m.cantidad_minima
-      ) || []
+      // Filtrar materiales con stock bajo (cantidad_laminas = 0)
+      const bajoStock = materiales?.filter((m) => m.cantidad_laminas === 0) || []
 
-      setMaterialesBajoStock(bajoStock)
+      setMaterialesBajoStock(bajoStock.map(m => ({
+        id: m.id,
+        nombre: m.nombre,
+        cantidad_actual: m.cantidad_laminas,
+        cantidad_minima: 0,
+        categoria: 'Material'
+      })))
 
-      // Calcular valor total del inventario
+      // Calcular valor total del inventario (cantidad_laminas * precio_costo)
       const totalInventario = materiales?.reduce(
-        (sum, m) => sum + (m.cantidad_actual * (m.precio_unitario || 0)),
+        (sum, m) => sum + ((m.cantidad_laminas || 0) * (m.precio_costo || 0)),
         0
       ) || 0
 
-      // Obtener gastos del mes actual
+      // Obtener gastos del mes actual (using fecha field with date range)
       const { data: gastos, error: gastosError } = await supabase
         .from('gastos')
         .select('monto')
-        .eq('mes', currentMonth)
-        .eq('anio', currentYear)
+        .gte('fecha', firstDayOfMonth.toISOString())
+        .lte('fecha', lastDayOfMonth.toISOString())
 
       if (gastosError) throw gastosError
 
-      const totalGastos = gastos?.reduce((sum, g) => sum + g.monto, 0) || 0
+      const totalGastos = gastos?.reduce((sum, g) => sum + (g.monto || 0), 0) || 0
 
-      // Obtener producción del mes actual
+      // Obtener producción del mes actual (from produccion_sobres table using fecha)
       const { data: produccion, error: produccionError } = await supabase
-        .from('produccion')
-        .select('metros_lineales')
-        .eq('mes', currentMonth)
-        .eq('anio', currentYear)
+        .from('produccion_sobres')
+        .select('material_usado')
+        .gte('fecha', firstDayOfMonth.toISOString())
+        .lte('fecha', lastDayOfMonth.toISOString())
 
       if (produccionError) throw produccionError
 
-      const totalMetros = produccion?.reduce((sum, p) => sum + p.metros_lineales, 0) || 0
+      const totalMetros = produccion?.reduce((sum, p) => sum + (p.material_usado || 0), 0) || 0
 
       setStats({
         inventarioTotal: totalInventario,

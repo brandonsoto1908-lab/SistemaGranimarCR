@@ -38,6 +38,7 @@ export default function DiscosPage() {
     tipo: 'Disco de pulir',
     marca: '',
     material_compatible: '',
+    cantidad: '',
     imagenes: [] as string[],
   })
 
@@ -130,15 +131,17 @@ export default function DiscosPage() {
         tipo: disco.tipo,
         marca: disco.marca || '',
         material_compatible: disco.material_compatible || '',
+        cantidad: disco.cantidad?.toString() || '0',
         imagenes: disco.imagenes || [],
       })
     } else {
       setEditingDisco(null)
       setFormData({
         nombre: '',
-        tipo: 'disco_corte',
+        tipo: 'Disco de pulir',
         marca: '',
         material_compatible: '',
+        cantidad: '0',
         imagenes: [],
       })
     }
@@ -160,9 +163,9 @@ export default function DiscosPage() {
         tipo: formData.tipo,
         marca: formData.marca || null,
         material_compatible: formData.material_compatible || null,
+        cantidad: parseInt(formData.cantidad) || 0,
         imagenes: formData.imagenes.length > 0 ? formData.imagenes : null,
         // Campos opcionales con valores por defecto
-        cantidad: 0,
         diametro: null,
         espesor: null,
         descripcion_detallada: null,
@@ -493,19 +496,34 @@ export default function DiscosPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="label">Material Compatible</label>
-                  <select
-                    value={formData.material_compatible}
-                    onChange={(e) => setFormData({ ...formData, material_compatible: e.target.value })}
-                    className="input"
-                  >
-                    <option value="">Seleccionar material</option>
-                    <option value="Granito">Granito</option>
-                    <option value="Cuarzo">Cuarzo</option>
-                    <option value="Granito, Mármol, Cuarzo">Granito, Mármol, Cuarzo</option>
-                    <option value="Universal">Universal (Todos)</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Material Compatible</label>
+                    <select
+                      value={formData.material_compatible}
+                      onChange={(e) => setFormData({ ...formData, material_compatible: e.target.value })}
+                      className="input"
+                    >
+                      <option value="">Seleccionar material</option>
+                      <option value="Granito">Granito</option>
+                      <option value="Cuarzo">Cuarzo</option>
+                      <option value="Granito, Mármol, Cuarzo">Granito, Mármol, Cuarzo</option>
+                      <option value="Universal">Universal (Todos)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label label-required">Cantidad Inicial</label>
+                    <input
+                      type="number"
+                      value={formData.cantidad}
+                      onChange={(e) => setFormData({ ...formData, cantidad: e.target.value })}
+                      className="input"
+                      placeholder="0"
+                      min="0"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
