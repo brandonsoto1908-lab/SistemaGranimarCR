@@ -14,8 +14,15 @@ import {
 import Link from 'next/link'
 import StockAlertBanner from '@/components/StockAlertBanner'
 
+// Una lámina de 3.22m × 1.59m puede generar mínimo 2 cortes de 60cm de ancho
+// = 6.44 metros lineales por lámina (aproximado)
+const LAMINA_ML = 6.44 // Metros lineales por lámina (mínimo 2 cortes)
+
 interface DashboardStats {
   inventarioTotal: number
+  inventarioVenta: number
+  inventarioVentaLineal: number
+  valorSobrantes: number
   gastosmes: number
   produccionMes: number
   materialesBajoStock: number
@@ -32,6 +39,9 @@ interface MaterialBajoStock {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     inventarioTotal: 0,
+    inventarioVenta: 0,
+    inventarioVentaLineal: 0,
+    valorSobrantes: 0,
     gastosmes: 0,
     produccionMes: 0,
     materialesBajoStock: 0,
@@ -53,7 +63,7 @@ export default function DashboardPage() {
       // Obtener todos los materiales
       const { data: materiales, error: materialesError } = await supabase
         .from('materiales')
-        .select('id, nombre, cantidad_laminas, precio_costo')
+        .select('id, nombre, cantidad_laminas, precio_costo, precio_venta, precio_lineal, precio_por_metro')
         .order('nombre')
 
       if (materialesError) throw materialesError
@@ -69,11 +79,46 @@ export default function DashboardPage() {
         categoria: 'Material'
       })))
 
-      // Calcular valor total del inventario (cantidad_laminas * precio_costo)
+      // Calcular valor total del inventario en COSTO (cantidad_laminas * precio_costo)
       const totalInventario = materiales?.reduce(
         (sum, m) => sum + ((m.cantidad_laminas || 0) * (m.precio_costo || 0)),
         0
       ) || 0
+
+      // Calcular valor total del inventario en VENTA (cantidad_laminas * precio_venta)
+      const totalInventarioVenta = materiales?.reduce(
+        (sum, m) => sum + ((m.cantidad_laminas || 0) * (m.precio_venta || 0)),
+        0
+      ) || 0
+
+      // Calcular valor total del inventario en VENTA LINEAL (metros_lineales * precio_lineal)
+      const totalInventarioVentaLineal = materiales?.reduce(
+        (sum, m) => {
+          const metrosLineales = (m.cantidad_laminas || 0) * LAMINA_ML
+          return sum + (metrosLineales * (m.precio_lineal || 0))
+        },
+        0
+      ) || 0
+
+      // Obtener sobrantes aprovechables
+      const { data: sobros, error: sobrosError } = await supabase
+        .from('sobros')
+        .select('material_id, metros_lineales')
+        .eq('usado', false)
+        .eq('aprovechable', true)
+
+      if (sobrosError) throw sobrosError
+
+      // Calcular valor de sobrantes (m² * precio_por_metro)
+      let totalSobrantes = 0
+      if (sobros && sobros.length > 0) {
+        for (const sobro of sobros) {
+          const material = materiales?.find(m => m.id === sobro.material_id)
+          if (material && material.precio_por_metro) {
+            totalSobrantes += sobro.metros_lineales * material.precio_por_metro
+          }
+        }
+      }
 
       // Obtener gastos del mes actual (using fecha field with date range)
       const { data: gastos, error: gastosError } = await supabase
@@ -99,6 +144,9 @@ export default function DashboardPage() {
 
       setStats({
         inventarioTotal: totalInventario,
+        inventarioVenta: totalInventarioVenta,
+        inventarioVentaLineal: totalInventarioVentaLineal,
+        valorSobrantes: totalSobrantes,
         gastosmes: totalGastos,
         produccionMes: totalMetros,
         materialesBajoStock: bajoStock.length,
@@ -132,19 +180,81 @@ export default function DashboardPage() {
       <StockAlertBanner />
 
       {/* Stats Cards */}
-      <div className="grid-cards-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Valor Inventario en Costo */}
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="stat-label">Valor Inventario</p>
+              <p className="stat-label">Inversión en Inventario</p>
               <p className="stat-value">{formatCurrency(stats.inventarioTotal)}</p>
+              <p className="text-xs text-gray-500 mt-1">Valor en costo</p>
             </div>
-            <div className="p-3 bg-teal-100 rounded-lg">
-              <Package className="w-6 h-6 text-teal-600" />
+            <div className="p-3 bg-gray-100 rounded-lg">
+              <Package className="w-6 h-6 text-gray-600" />
             </div>
           </div>
         </div>
 
+        {/* Valor Inventario en Venta - NUEVO */}
+        <div className="stat-card border-2 border-green-200 bg-green-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="stat-label text-green-800">💰 Venta Láminas Completas</p>
+              <p className="stat-value text-green-700">{formatCurrency(stats.inventarioVenta)}</p>
+              <p className="text-xs text-green-600 mt-1 font-medium">
+                Si vendes láminas completas (sin cortar)
+              </p>
+            </div>
+            <div className="p-3 bg-green-200 rounded-lg">
+              <Package className="w-6 h-6 text-green-700" />
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-green-200">
+            <p className="text-xs text-green-700 font-semibold">
+              Ganancia: {formatCurrency(stats.inventarioVenta - stats.inventarioTotal)}
+            </p>
+          </div>
+        </div>
+
+        {/* Valor Inventario en Venta LINEAL - NUEVO */}
+        <div className="stat-card border-2 border-blue-200 bg-blue-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="stat-label text-blue-800">📏 Venta Metros Lineales</p>
+              <p className="stat-value text-blue-700">{formatCurrency(stats.inventarioVentaLineal)}</p>
+              <p className="text-xs text-blue-600 mt-1 font-medium">
+                Si vendes cortado en metros lineales (aproximado)
+              </p>
+            </div>
+            <div className="p-3 bg-blue-200 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-blue-700" />
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-blue-200">
+            <p className="text-xs text-blue-700 font-semibold">
+              Ganancia: {formatCurrency(stats.inventarioVentaLineal - stats.inventarioTotal)}
+            </p>
+            <p className="text-xs text-blue-500 mt-1">
+              Basado en 6.44 ml por lámina (2 cortes mín.)
+            </p>
+          </div>
+        </div>
+
+        {/* Valor Sobrantes - NUEVO */}
+        <div className="stat-card border-2 border-teal-200 bg-teal-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="stat-label text-teal-800">Valor en Sobrantes</p>
+              <p className="stat-value text-teal-700">{formatCurrency(stats.valorSobrantes)}</p>
+              <p className="text-xs text-teal-600 mt-1">Material aprovechable</p>
+            </div>
+            <div className="p-3 bg-teal-200 rounded-lg">
+              <Package className="w-6 h-6 text-teal-700" />
+            </div>
+          </div>
+        </div>
+
+        {/* Gastos del Mes */}
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
@@ -157,18 +267,20 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Producción */}
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-label">Producción (m)</p>
               <p className="stat-value">{formatNumber(stats.produccionMes, 2)} m</p>
             </div>
-            <div className="p-3 bg-green-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-green-600" />
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
 
+        {/* Stock Bajo */}
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>

@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  Receipt,
 } from 'lucide-react'
 
 interface NavItem {
@@ -44,6 +45,15 @@ const navigationItems: NavItem[] = [
     label: 'Producción',
     href: '/produccion',
     icon: Wrench,
+    children: [
+      { label: 'Costeo', href: '/costeo', icon: DollarSign },
+      { label: 'Insumos', href: '/insumos', icon: Package },
+    ],
+  },
+  {
+    label: 'Facturación',
+    href: '/facturacion',
+    icon: Receipt,
   },
   {
     label: 'Gastos',

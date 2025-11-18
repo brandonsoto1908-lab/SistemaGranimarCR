@@ -6,10 +6,13 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Save, Package, AlertCircle, Scissors, DollarSign } from 'lucide-react'
+import { ArrowLeft, Save, Package, AlertCircle, Scissors, DollarSign, Calculator, ArrowDownCircle } from 'lucide-react'
 import Link from 'next/link'
 
-const LAMINA_ML = 3.22
+// Una lámina de 3.22m × 1.59m puede generar mínimo 2 cortes de 60cm de ancho
+// = 6.44 metros lineales por lámina (aproximado)
+const LAMINA_ML = 6.44 // Metros lineales por lámina (mínimo 2 cortes)
+const LAMINA_M2 = 5.12 // Metros cuadrados por lámina (3.22m × 1.59m aproximadamente)
 
 interface Material {
   id: string
@@ -18,6 +21,7 @@ interface Material {
   precio_costo: number
   precio_venta: number
   precio_lineal: number
+  precio_por_metro: number
 }
 
 interface Sobrante {
@@ -37,9 +41,12 @@ export default function NuevoRetiroPage() {
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
   const [formData, setFormData] = useState({
     material_id: '',
-    tipo_retiro: 'laminas_completas' as 'laminas_completas' | 'metros_lineales',
+    tipo_retiro: 'laminas_completas' as 'laminas_completas' | 'metros_lineales' | 'metros_cuadrados',
     cantidad_laminas: 1,
     metros_lineales: 0,
+    metros_cuadrados: 0,
+    largo_metros: 0,
+    ancho_metros: 0,
     proyecto: '',
     cliente: '',
     usuario: '',
@@ -84,6 +91,7 @@ export default function NuevoRetiroPage() {
         .select('*')
         .eq('material_id', materialId)
         .eq('usado', false)
+        .eq('aprovechable', true)
         .order('metros_lineales', { ascending: false })
 
       if (error) throw error
@@ -106,29 +114,59 @@ export default function NuevoRetiroPage() {
       laminasNecesarias = formData.cantidad_laminas
       costo = formData.cantidad_laminas * selectedMaterial.precio_costo
       venta = formData.cantidad_laminas * selectedMaterial.precio_venta
-    } else {
-      const metrosNecesarios = formData.metros_lineales
+    } else if (formData.tipo_retiro === 'metros_cuadrados') {
+      // Opción nueva: Ingreso directo de m²
+      const metrosCuadradosNecesarios = formData.metros_cuadrados
       
       if (formData.uso_sobrantes && sobrantes.length > 0) {
         const metrosSobrantes = sobrantes.reduce((sum, s) => sum + s.metros_lineales, 0)
-        const metrosUsadosSobrantes = Math.min(metrosNecesarios, metrosSobrantes)
-        const metrosRestantes = metrosNecesarios - metrosUsadosSobrantes
+        const metrosUsadosSobrantes = Math.min(metrosCuadradosNecesarios, metrosSobrantes)
+        const metrosRestantes = metrosCuadradosNecesarios - metrosUsadosSobrantes
         
         if (metrosRestantes > 0) {
-          laminasNecesarias = Math.ceil(metrosRestantes / LAMINA_ML)
-          const metrosLaminasUsadas = laminasNecesarias * LAMINA_ML
+          laminasNecesarias = Math.ceil(metrosRestantes / LAMINA_M2)
+          const metrosLaminasUsadas = laminasNecesarias * LAMINA_M2
           sobranteGenerado = metrosLaminasUsadas - metrosRestantes
         }
         
         costo = laminasNecesarias * selectedMaterial.precio_costo
       } else {
-        laminasNecesarias = Math.ceil(metrosNecesarios / LAMINA_ML)
-        const metrosLaminasUsadas = laminasNecesarias * LAMINA_ML
-        sobranteGenerado = metrosLaminasUsadas - metrosNecesarios
+        laminasNecesarias = Math.ceil(metrosCuadradosNecesarios / LAMINA_M2)
+        const metrosLaminasUsadas = laminasNecesarias * LAMINA_M2
+        sobranteGenerado = metrosLaminasUsadas - metrosCuadradosNecesarios
         costo = laminasNecesarias * selectedMaterial.precio_costo
       }
       
-      venta = metrosNecesarios * selectedMaterial.precio_lineal
+      // Para m² directos, se cobra por el área usando precio_por_metro
+      venta = metrosCuadradosNecesarios * (selectedMaterial.precio_por_metro || selectedMaterial.precio_venta / LAMINA_M2)
+    } else {
+      const metrosCuadradosNecesarios = formData.metros_lineales // metros cuadrados (área)
+      // Metros lineales = Largo + Ancho (perímetro del frente y los lados)
+      const metrosLinealesVenta = formData.largo_metros + formData.ancho_metros
+      
+      if (formData.uso_sobrantes && sobrantes.length > 0) {
+        const metrosSobrantes = sobrantes.reduce((sum, s) => sum + s.metros_lineales, 0)
+        const metrosUsadosSobrantes = Math.min(metrosCuadradosNecesarios, metrosSobrantes)
+        const metrosRestantes = metrosCuadradosNecesarios - metrosUsadosSobrantes
+        
+        if (metrosRestantes > 0) {
+          // Calcular láminas necesarias basado en m²
+          laminasNecesarias = Math.ceil(metrosRestantes / LAMINA_M2)
+          const metrosLaminasUsadas = laminasNecesarias * LAMINA_M2
+          sobranteGenerado = metrosLaminasUsadas - metrosRestantes
+        }
+        
+        costo = laminasNecesarias * selectedMaterial.precio_costo
+      } else {
+        // Calcular láminas necesarias basado en m²
+        laminasNecesarias = Math.ceil(metrosCuadradosNecesarios / LAMINA_M2)
+        const metrosLaminasUsadas = laminasNecesarias * LAMINA_M2
+        sobranteGenerado = metrosLaminasUsadas - metrosCuadradosNecesarios
+        costo = laminasNecesarias * selectedMaterial.precio_costo
+      }
+      
+      // IMPORTANTE: La venta se calcula por metros LINEALES (largo + ancho), NO por m²
+      venta = metrosLinealesVenta * selectedMaterial.precio_lineal
     }
 
     const ganancia = venta - costo
@@ -153,6 +191,11 @@ export default function NuevoRetiroPage() {
 
     if (formData.tipo_retiro === 'metros_lineales' && formData.metros_lineales <= 0) {
       toast.error('Los metros lineales deben ser mayores a 0')
+      return
+    }
+
+    if (formData.tipo_retiro === 'metros_cuadrados' && formData.metros_cuadrados <= 0) {
+      toast.error('Los metros cuadrados deben ser mayores a 0')
       return
     }
 
@@ -181,7 +224,9 @@ export default function NuevoRetiroPage() {
           material_id: formData.material_id,
           tipo_retiro: formData.tipo_retiro,
           cantidad_laminas: formData.tipo_retiro === 'laminas_completas' ? formData.cantidad_laminas : 0,
-          metros_lineales: formData.tipo_retiro === 'metros_lineales' ? formData.metros_lineales : 0,
+          metros_lineales: formData.tipo_retiro === 'metros_lineales' ? formData.metros_lineales : (formData.tipo_retiro === 'metros_cuadrados' ? formData.metros_cuadrados : 0),
+          largo_metros: formData.tipo_retiro === 'metros_lineales' ? formData.largo_metros : 0,
+          ancho_metros: formData.tipo_retiro === 'metros_lineales' ? formData.ancho_metros : 0,
           proyecto: formData.proyecto,
           cliente: formData.cliente || null,
           usuario: formData.usuario,
@@ -197,8 +242,8 @@ export default function NuevoRetiroPage() {
 
       if (retiroError) throw retiroError
 
-      if (formData.uso_sobrantes && formData.tipo_retiro === 'metros_lineales' && sobrantes.length > 0) {
-        let metrosRestantes = formData.metros_lineales
+      if (formData.uso_sobrantes && (formData.tipo_retiro === 'metros_lineales' || formData.tipo_retiro === 'metros_cuadrados') && sobrantes.length > 0) {
+        let metrosRestantes = formData.tipo_retiro === 'metros_lineales' ? formData.metros_lineales : formData.metros_cuadrados
         
         for (const sobrante of sobrantes) {
           if (metrosRestantes <= 0) break
@@ -223,7 +268,7 @@ export default function NuevoRetiroPage() {
               .update({ 
                 usado: true, 
                 fecha_uso: new Date().toISOString(),
-                notas: `Usado parcialmente (${metrosUsados.toFixed(2)}ml) en: ${formData.proyecto}`
+                notas: `Usado parcialmente (${metrosUsados.toFixed(2)}m²) en: ${formData.proyecto}`
               })
               .eq('id', sobrante.id)
             
@@ -234,6 +279,7 @@ export default function NuevoRetiroPage() {
                 metros_lineales: metrosRestantesSobrante,
                 proyecto_origen: sobrante.proyecto_origen,
                 usado: false,
+                aprovechable: true,
                 notas: 'Remanente de sobrante original'
               }])
             
@@ -251,6 +297,7 @@ export default function NuevoRetiroPage() {
             retiro_origen_id: retiroData.id,
             proyecto_origen: formData.proyecto,
             usado: false,
+            aprovechable: true,
           }])
       }
 
@@ -304,7 +351,7 @@ export default function NuevoRetiroPage() {
                 <option value="">Seleccionar material...</option>
                 {materiales.map((material) => (
                   <option key={material.id} value={material.id}>
-                    {material.nombre} - Stock: {material.cantidad_laminas} lám. ({formatNumber(material.cantidad_laminas * LAMINA_ML)} ml)
+                    {material.nombre} - Stock: {material.cantidad_laminas} lám. (≈{formatNumber(material.cantidad_laminas * LAMINA_ML)} ml)
                   </option>
                 ))}
               </select>
@@ -317,7 +364,9 @@ export default function NuevoRetiroPage() {
                   <div>
                     <span className="text-blue-600">Stock disponible:</span>
                     <span className="ml-2 font-medium">{selectedMaterial.cantidad_laminas} láminas</span>
-                    <span className="ml-1 text-blue-600">({formatNumber(selectedMaterial.cantidad_laminas * LAMINA_ML)} ml)</span>
+                    <div className="ml-1 text-blue-600 text-xs">
+                      (≈{formatNumber(selectedMaterial.cantidad_laminas * LAMINA_ML)} ml | {formatNumber(selectedMaterial.cantidad_laminas * LAMINA_M2)} m²)
+                    </div>
                   </div>
                   <div>
                     <span className="text-blue-600">Precio lámina:</span>
@@ -346,7 +395,7 @@ export default function NuevoRetiroPage() {
                 Tipo de Retiro
               </h2>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, tipo_retiro: 'laminas_completas', uso_sobrantes: false })}
@@ -357,7 +406,20 @@ export default function NuevoRetiroPage() {
                   }`}
                 >
                   <div className="font-semibold text-gray-900 mb-1">Láminas Completas</div>
-                  <div className="text-sm text-gray-600">Para proyectos que requieren láminas enteras</div>
+                  <div className="text-sm text-gray-600">Láminas enteras sin cortar</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, tipo_retiro: 'metros_cuadrados' })}
+                  className={`p-4 border-2 rounded-lg text-left transition-colors ${
+                    formData.tipo_retiro === 'metros_cuadrados'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <div className="font-semibold text-gray-900 mb-1">Metros Cuadrados (m²)</div>
+                  <div className="text-sm text-gray-600">Ingreso directo de m²</div>
                 </button>
 
                 <button
@@ -369,8 +431,8 @@ export default function NuevoRetiroPage() {
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
-                  <div className="font-semibold text-gray-900 mb-1">Metros Lineales</div>
-                  <div className="text-sm text-gray-600">Para sobremesas y cortes específicos</div>
+                  <div className="font-semibold text-gray-900 mb-1">Metros Lineales (ml)</div>
+                  <div className="text-sm text-gray-600">Sobremesas con dimensiones</div>
                 </button>
               </div>
 
@@ -387,67 +449,277 @@ export default function NuevoRetiroPage() {
                     required
                   />
                   <p className="text-sm text-gray-500 mt-1">
-                    = {formatNumber(formData.cantidad_laminas * LAMINA_ML)} metros lineales
+                    ≈ {formatNumber(formData.cantidad_laminas * LAMINA_ML)} metros lineales (aprox. 2 cortes/lámina)
                   </p>
+                </div>
+              ) : formData.tipo_retiro === 'metros_cuadrados' ? (
+                <div className="space-y-4">
+                  {/* Ingreso directo de m² */}
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <h4 className="font-medium text-purple-900 mb-3">Cantidad en Metros Cuadrados</h4>
+                    <div>
+                      <label className="label">Metros Cuadrados (m²) *</label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={formData.metros_cuadrados}
+                        onChange={(e) => setFormData({ ...formData, metros_cuadrados: parseFloat(e.target.value) || 0 })}
+                        className="input"
+                        placeholder="Ej: 1.5 para una lámina y media"
+                        required
+                      />
+                      <p className="text-sm text-purple-700 mt-2">
+                        Se necesitarán <strong>{totales.laminasNecesarias} lámina(s)</strong> ({formatNumber(totales.laminasNecesarias * LAMINA_M2)} m²)
+                      </p>
+                      {totales.sobranteGenerado > 0.01 && (
+                        <p className="text-xs text-yellow-600 mt-1">
+                          Cada lámina tiene {LAMINA_M2} m². Sobrará {formatNumber(totales.sobranteGenerado)} m²
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sobrantes Disponibles */}
+                  {sobrantes.length > 0 && (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-5 shadow-sm">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h4 className="font-bold text-green-900 text-lg mb-2 flex items-center gap-2">
+                            <Package className="w-5 h-5" />
+                            Sobrantes Disponibles
+                          </h4>
+                          <div className="bg-white rounded-lg px-6 py-4 border border-green-200">
+                            <div className="text-center">
+                              <p className="text-4xl font-bold text-green-700">
+                                {formatNumber(sobrantesDisponibles)}
+                              </p>
+                              <p className="text-sm text-green-600 font-medium mt-1">metros cuadrados disponibles (m²)</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="uso_sobrantes_m2"
+                          checked={formData.uso_sobrantes}
+                          onChange={(e) => setFormData({ ...formData, uso_sobrantes: e.target.checked })}
+                          className="w-5 h-5 text-green-600 border-green-300 rounded focus:ring-green-500"
+                        />
+                        <label htmlFor="uso_sobrantes_m2" className="font-medium text-green-900 cursor-pointer">
+                          Usar sobrantes disponibles primero
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div>
-                    <label className="label">Metros Lineales *</label>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={formData.metros_lineales}
-                      onChange={(e) => setFormData({ ...formData, metros_lineales: parseFloat(e.target.value) || 0 })}
-                      className="input"
-                      required
-                    />
-                    <p className="text-sm text-gray-500 mt-1">
-                      Se necesitarán {totales.laminasNecesarias} lámina(s) completa(s)
-                    </p>
+                  {/* Dimensiones del retiro */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="font-medium text-blue-900 mb-3">Dimensiones del Retiro</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="label">Largo (metros) *</label>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={formData.largo_metros}
+                          onChange={(e) => {
+                            const largo = parseFloat(e.target.value) || 0
+                            const metrosCuadrados = largo * formData.ancho_metros
+                            setFormData({ 
+                              ...formData, 
+                              largo_metros: largo,
+                              metros_lineales: metrosCuadrados
+                            })
+                          }}
+                          className="input"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Ancho (metros) *</label>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={formData.ancho_metros}
+                          onChange={(e) => {
+                            const ancho = parseFloat(e.target.value) || 0
+                            const metrosCuadrados = formData.largo_metros * ancho
+                            setFormData({ 
+                              ...formData, 
+                              ancho_metros: ancho,
+                              metros_lineales: metrosCuadrados
+                            })
+                          }}
+                          className="input"
+                          required
+                        />
+                      </div>
+                    </div>
+                    {formData.largo_metros > 0 && formData.ancho_metros > 0 && (
+                      <div className="mt-3 p-3 bg-white rounded border border-blue-300">
+                        <p className="text-sm font-medium text-blue-900">
+                          Área total: <span className="text-lg">{formatNumber(formData.metros_lineales)} m²</span>
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          {formData.largo_metros} m × {formData.ancho_metros} m = {formatNumber(formData.metros_lineales)} m²
+                        </p>
+                      </div>
+                    )}
                   </div>
 
+                  <div>
+                    <label className="label">Metros Cuadrados (calculado automáticamente)</label>
+                    <input
+                      type="number"
+                      value={formData.metros_lineales}
+                      className="input bg-gray-100"
+                      readOnly
+                      disabled
+                    />
+                    <p className="text-sm text-gray-500 mt-1">
+                      Se necesitarán {totales.laminasNecesarias} lámina(s) completa(s) ({formatNumber(totales.laminasNecesarias * LAMINA_M2)} m²)
+                    </p>
+                    {totales.sobranteGenerado > 0.01 && (
+                      <p className="text-xs text-yellow-600 mt-1">
+                        Cada lámina tiene {LAMINA_M2} m². Sobrará {formatNumber(totales.sobranteGenerado)} m²
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Sobrantes Disponibles */}
                   {sobrantes.length > 0 && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-5 shadow-sm">
+                      <div className="flex items-start justify-between mb-4">
                         <div>
-                          <h4 className="font-medium text-green-900">Sobrantes Disponibles</h4>
-                          <p className="text-sm text-green-600">
-                            {sobrantes.length} pieza(s) - Total: {formatNumber(sobrantesDisponibles)} ml
-                          </p>
+                          <h4 className="font-bold text-green-900 text-lg mb-2 flex items-center gap-2">
+                            <Package className="w-5 h-5" />
+                            Sobrantes Disponibles para este Material
+                          </h4>
+                          <div className="bg-white rounded-lg px-6 py-4 border border-green-200">
+                            <div className="text-center">
+                              <p className="text-4xl font-bold text-green-700">
+                                {formatNumber(sobrantesDisponibles)}
+                              </p>
+                              <p className="text-sm text-green-600 font-medium mt-1">metros cuadrados disponibles (m²)</p>
+                              {selectedMaterial?.precio_por_metro && (
+                                <p className="text-xs text-green-700 mt-2 font-semibold">
+                                  Valor: {formatCurrency(sobrantesDisponibles * selectedMaterial.precio_por_metro)}
+                                  <span className="text-gray-500 ml-1">
+                                    ({formatCurrency(selectedMaterial.precio_por_metro)}/m²)
+                                  </span>
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">Sobrantes aprovechables acumulados</p>
+                            </div>
+                          </div>
                         </div>
-                        <label className="flex items-center gap-2 cursor-pointer">
+                        <label className="flex items-center gap-3 cursor-pointer bg-white px-4 py-3 rounded-lg border-2 border-green-400 hover:bg-green-50 transition-colors">
                           <input
                             type="checkbox"
                             checked={formData.uso_sobrantes}
                             onChange={(e) => setFormData({ ...formData, uso_sobrantes: e.target.checked })}
-                            className="w-5 h-5 text-blue-600 rounded"
+                            className="w-6 h-6 text-green-600 rounded focus:ring-2 focus:ring-green-500"
                           />
-                          <span className="text-sm font-medium text-green-900">Usar sobrantes</span>
+                          <div className="text-left">
+                            <span className="block text-sm font-bold text-green-900">Usar Sobrantes</span>
+                            <span className="block text-xs text-green-600">
+                              {formData.uso_sobrantes ? 'Activado ✓' : 'Desactivado'}
+                            </span>
+                          </div>
                         </label>
                       </div>
                       
+                      {/* Comparación: Necesitas vs Disponible */}
+                      {formData.metros_lineales > 0 && (
+                        <div className="bg-white rounded-lg p-4 mb-4 border border-green-200">
+                          <h5 className="font-semibold text-gray-700 mb-3 text-sm">Análisis de Uso:</h5>
+                          <div className="grid grid-cols-3 gap-4 text-center">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">Necesitas</p>
+                              <p className="text-xl font-bold text-blue-600">{formatNumber(formData.metros_lineales)} m²</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">Disponible en Sobros</p>
+                              <p className="text-xl font-bold text-green-600">{formatNumber(sobrantesDisponibles)} m²</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-1">
+                                {sobrantesDisponibles >= formData.metros_lineales ? 'Cubierto' : 'Faltante'}
+                              </p>
+                              <p className={`text-xl font-bold ${sobrantesDisponibles >= formData.metros_lineales ? 'text-green-600' : 'text-orange-600'}`}>
+                                {sobrantesDisponibles >= formData.metros_lineales 
+                                  ? '✓ 100%' 
+                                  : `${formatNumber(formData.metros_lineales - sobrantesDisponibles)} m² más`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {formData.uso_sobrantes && (
+                            <div className="mt-3 pt-3 border-t border-green-200">
+                              <p className="text-sm text-green-700">
+                                <strong>Láminas necesarias:</strong> {totales.laminasNecesarias} lámina(s)
+                                {sobrantesDisponibles >= formData.metros_lineales 
+                                  ? ' (No se usarán láminas, solo sobrantes ✓)'
+                                  : ` (se completará con sobrantes)`
+                                }
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Lista de Sobrantes */}
                       <div className="space-y-2">
-                        {sobrantes.slice(0, 5).map((sobrante) => (
-                          <div key={sobrante.id} className="flex justify-between text-sm bg-white rounded px-3 py-2">
-                            <span className="text-gray-700">
-                              {formatNumber(sobrante.metros_lineales)} ml
-                              {sobrante.proyecto_origen && (
-                                <span className="text-gray-500 ml-2">- {sobrante.proyecto_origen}</span>
+                        <h5 className="font-semibold text-gray-700 text-sm mb-2">Detalle de Sobrantes:</h5>
+                        {sobrantes.map((sobrante) => (
+                          <div key={sobrante.id} className="flex justify-between items-center text-sm bg-white rounded-lg px-4 py-3 border border-green-200 hover:border-green-300 transition-colors">
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="bg-green-100 rounded-full px-3 py-1">
+                                <span className="font-bold text-green-700">{formatNumber(sobrante.metros_lineales)} m²</span>
+                              </div>
+                              {selectedMaterial?.precio_por_metro && (
+                                <div className="bg-blue-50 rounded px-2 py-1">
+                                  <span className="text-xs font-semibold text-blue-700">
+                                    {formatCurrency(sobrante.metros_lineales * selectedMaterial.precio_por_metro)}
+                                  </span>
+                                </div>
                               )}
-                            </span>
-                            <span className="text-gray-500">
-                              {new Date(sobrante.created_at).toLocaleDateString('es-ES')}
+                              {sobrante.proyecto_origen && (
+                                <span className="text-gray-600 text-xs">
+                                  De: <span className="font-medium">{sobrante.proyecto_origen}</span>
+                                </span>
+                              )}
+                              {sobrante.notas && (
+                                <span className="text-xs text-gray-500 italic">({sobrante.notas})</span>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {new Date(sobrante.created_at).toLocaleDateString('es-ES', { 
+                                day: '2-digit', 
+                                month: 'short', 
+                                year: 'numeric' 
+                              })}
                             </span>
                           </div>
                         ))}
-                        {sobrantes.length > 5 && (
-                          <p className="text-xs text-green-600 text-center">
-                            + {sobrantes.length - 5} sobrante(s) más
-                          </p>
-                        )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Mensaje si NO hay sobrantes */}
+                  {sobrantes.length === 0 && formData.metros_lineales > 0 && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-sm text-gray-600 text-center">
+                        ℹ️ No hay sobrantes disponibles para este material
+                      </p>
                     </div>
                   )}
 
@@ -455,7 +727,7 @@ export default function NuevoRetiroPage() {
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <h4 className="font-medium text-yellow-900 mb-2">Sobrante Generado</h4>
                       <p className="text-sm text-yellow-700">
-                        Se generará un sobrante de <span className="font-bold">{formatNumber(totales.sobranteGenerado)} ml</span>
+                        Se generará un sobrante de <span className="font-bold">{formatNumber(totales.sobranteGenerado)} m²</span>
                       </p>
                       <p className="text-xs text-yellow-600 mt-1">
                         Este sobrante quedará disponible para futuros retiros
@@ -464,6 +736,121 @@ export default function NuevoRetiroPage() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Resumen del Retiro */}
+        {selectedMaterial && formData.tipo_retiro === 'metros_lineales' && formData.metros_lineales > 0 && (
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Calculator className="w-5 h-5" />
+                Resumen del Retiro
+              </h2>
+              
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border-2 border-blue-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Lado izquierdo: Lo que se va a usar */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <h3 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-2">
+                      <ArrowDownCircle className="w-4 h-4" />
+                      Se va a usar:
+                    </h3>
+                    <div className="space-y-2">
+                      {formData.uso_sobrantes && sobrantesDisponibles > 0 ? (
+                        <>
+                          <div className="flex justify-between items-center py-2 border-b border-blue-100">
+                            <span className="text-sm text-gray-600">Sobrantes:</span>
+                            <span className="font-bold text-green-600">
+                              {formatNumber(Math.min(formData.metros_lineales, sobrantesDisponibles))} m²
+                            </span>
+                          </div>
+                          {totales.laminasNecesarias > 0 && (
+                            <div className="flex justify-between items-center py-2 border-b border-blue-100">
+                              <span className="text-sm text-gray-600">Láminas nuevas:</span>
+                              <span className="font-bold text-blue-600">
+                                {totales.laminasNecesarias} lámina(s) = {formatNumber(totales.laminasNecesarias * LAMINA_M2)} m²
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex justify-between items-center py-2 border-b border-blue-100">
+                          <span className="text-sm text-gray-600">Láminas completas:</span>
+                          <span className="font-bold text-blue-600">
+                            {totales.laminasNecesarias} lámina(s) = {formatNumber(totales.laminasNecesarias * LAMINA_M2)} m²
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center py-2 bg-blue-50 rounded px-2">
+                        <span className="text-sm font-bold text-blue-900">Total necesario:</span>
+                        <span className="font-bold text-blue-900 text-lg">
+                          {formatNumber(formData.metros_lineales)} m²
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lado derecho: Lo que va a quedar */}
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <h3 className="text-sm font-bold text-green-900 mb-3 flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      Después del retiro quedará:
+                    </h3>
+                    <div className="space-y-2">
+                      {formData.uso_sobrantes && sobrantesDisponibles > 0 ? (
+                        <>
+                          <div className="flex justify-between items-center py-2 border-b border-green-100">
+                            <span className="text-sm text-gray-600">Sobrantes restantes:</span>
+                            <span className="font-bold text-green-600">
+                              {formatNumber(Math.max(0, sobrantesDisponibles - formData.metros_lineales))} m²
+                            </span>
+                          </div>
+                          {totales.sobranteGenerado > 0.01 && (
+                            <div className="flex justify-between items-center py-2 border-b border-yellow-100">
+                              <span className="text-sm text-gray-600">Nuevo sobrante generado:</span>
+                              <span className="font-bold text-yellow-600">
+                                + {formatNumber(totales.sobranteGenerado)} m²
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center py-2 bg-green-50 rounded px-2">
+                            <span className="text-sm font-bold text-green-900">Total en sobrantes:</span>
+                            <span className="font-bold text-green-900 text-lg">
+                              {formatNumber(Math.max(0, sobrantesDisponibles - formData.metros_lineales) + totales.sobranteGenerado)} m²
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {totales.sobranteGenerado > 0.01 && (
+                            <>
+                              <div className="flex justify-between items-center py-2 border-b border-yellow-100">
+                                <span className="text-sm text-gray-600">Nuevo sobrante:</span>
+                                <span className="font-bold text-yellow-600">
+                                  {formatNumber(totales.sobranteGenerado)} m²
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center py-2 bg-yellow-50 rounded px-2">
+                                <span className="text-sm font-bold text-yellow-900">Total en sobrantes:</span>
+                                <span className="font-bold text-yellow-900 text-lg">
+                                  {formatNumber(sobrantesDisponibles + totales.sobranteGenerado)} m²
+                                </span>
+                              </div>
+                            </>
+                          )}
+                          {totales.sobranteGenerado <= 0.01 && (
+                            <div className="text-center py-4 text-gray-500 text-sm">
+                              No se generarán sobrantes
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -559,6 +946,11 @@ export default function NuevoRetiroPage() {
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="text-sm text-blue-600 mb-1">Precio Venta</div>
                   <div className="text-2xl font-bold text-blue-700">{formatCurrency(totales.venta)}</div>
+                  {formData.tipo_retiro === 'metros_lineales' && formData.largo_metros > 0 && formData.ancho_metros > 0 && (
+                    <div className="text-xs text-blue-500 mt-1">
+                      ({formatNumber(formData.largo_metros)} + {formatNumber(formData.ancho_metros)}) ml × {formatCurrency(selectedMaterial?.precio_lineal || 0)}/ml
+                    </div>
+                  )}
                 </div>
 
                 <div className={`rounded-lg p-4 ${totales.ganancia >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
@@ -570,6 +962,18 @@ export default function NuevoRetiroPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Nota sobre precio lineal */}
+              {formData.tipo_retiro === 'metros_lineales' && formData.largo_metros > 0 && formData.ancho_metros > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 font-medium">
+                    📏 Precio calculado por <strong>metros lineales</strong> (Largo + Ancho = {formatNumber(formData.largo_metros + formData.ancho_metros)} ml)
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Los sobrantes se gestionan en m² (área), pero la venta se cobra por metros lineales (largo + ancho) para evitar pérdidas
+                  </p>
+                </div>
+              )}
 
               {formData.uso_sobrantes && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">

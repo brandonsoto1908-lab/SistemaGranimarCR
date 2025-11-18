@@ -20,7 +20,6 @@ interface Material {
   created_at: string
   // Campos calculados de sobrantes
   sobros_metros?: number
-  sobros_count?: number
 }
 
 interface Sobro {
@@ -42,7 +41,8 @@ export default function InventarioPage() {
   const LAMINA_LARGO = 3.22 // metros
   const LAMINA_ANCHO = 1.60 // metros
   const LAMINA_M2 = LAMINA_LARGO * LAMINA_ANCHO // 5.152 m²
-  const LAMINA_ML = LAMINA_LARGO // 3.22 metros lineales
+  // Una lámina puede generar mínimo 2 cortes de 60cm de ancho (aproximado)
+  const LAMINA_ML = 6.44 // metros lineales por lámina (mínimo 2 cortes)
 
   useEffect(() => {
     fetchMateriales()
@@ -62,26 +62,25 @@ export default function InventarioPage() {
 
       if (materialesError) throw materialesError
 
-      // Obtener todos los sobrantes no usados
+      // Obtener todos los sobrantes no usados y aprovechables
       const { data: sobrosData, error: sobrosError } = await supabase
         .from('sobros')
         .select('*')
         .eq('usado', false)
+        .eq('aprovechable', true)
 
       if (sobrosError) throw sobrosError
 
       setSobros(sobrosData || [])
 
-      // Calcular totales de sobrantes por material
+      // Calcular totales de sobrantes por material (solo aprovechables)
       const materialesConSobros = (materialesData || []).map(material => {
         const sobrosDelMaterial = (sobrosData || []).filter(s => s.material_id === material.id)
         const sobros_metros = sobrosDelMaterial.reduce((sum, s) => sum + parseFloat(s.metros_lineales || 0), 0)
-        const sobros_count = sobrosDelMaterial.length
 
         return {
           ...material,
-          sobros_metros: sobros_metros,
-          sobros_count: sobros_count
+          sobros_metros: sobros_metros
         }
       })
 
@@ -248,19 +247,28 @@ export default function InventarioPage() {
                       <span className="font-semibold">
                         {material.cantidad_laminas} láminas
                       </span>
-                      <div className="text-xs text-gray-500">
-                        {(material.cantidad_laminas * LAMINA_ML).toFixed(2)} ml
+                      <div className="text-xs text-gray-500 space-y-0.5">
+                        <div>≈ {(material.cantidad_laminas * LAMINA_ML).toFixed(2)} ml</div>
+                        <div className="font-medium text-blue-600">
+                          {(material.cantidad_laminas * LAMINA_M2).toFixed(2)} m²
+                        </div>
                       </div>
                     </td>
                     <td>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-teal-600">
-                          {material.sobros_count || 0} piezas
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {(material.sobros_metros || 0).toFixed(2)} ml
-                        </span>
-                      </div>
+                      {material.sobros_metros && material.sobros_metros > 0 ? (
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-teal-600">
+                            {(material.sobros_metros).toFixed(2)} m²
+                          </span>
+                          {material.precio_por_metro && (
+                            <span className="text-xs text-blue-600 font-medium">
+                              {formatCurrency(material.sobros_metros * material.precio_por_metro)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">Sin sobrantes</span>
+                      )}
                     </td>
                     <td>{formatCurrency(material.precio_costo || 0)}</td>
                     <td>{formatCurrency(material.precio_venta || 0)}</td>

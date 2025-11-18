@@ -31,7 +31,9 @@ export default function EntradaMaterialPage() {
     factura: '',
   })
 
-  const LAMINA_ML = 3.22 // metros lineales por lámina
+  // Una lámina de 3.22m × 1.59m puede generar mínimo 2 cortes de 60cm de ancho (aproximado)
+  const LAMINA_ML = 6.44 // metros lineales por lámina (mínimo 2 cortes)
+  const LAMINA_M2 = 5.12 // metros cuadrados por lámina (3.22m × 1.59m)
 
   useEffect(() => {
     if (materialId) {
@@ -151,7 +153,7 @@ export default function EntradaMaterialPage() {
                     {material.cantidad_laminas} láminas
                   </span>
                   <span className="ml-1 text-gray-500">
-                    ({(material.cantidad_laminas * LAMINA_ML).toFixed(2)} ml)
+                    (≈{(material.cantidad_laminas * LAMINA_ML).toFixed(2)} ml | {(material.cantidad_laminas * LAMINA_M2).toFixed(2)} m²)
                   </span>
                 </div>
                 <div>
@@ -188,7 +190,7 @@ export default function EntradaMaterialPage() {
                 required
               />
               <p className="text-sm text-gray-600 mt-1">
-                = {(formData.cantidad_laminas * LAMINA_ML).toFixed(2)} metros lineales
+                ≈ {(formData.cantidad_laminas * LAMINA_ML).toFixed(2)} ml | {(formData.cantidad_laminas * LAMINA_M2).toFixed(2)} m²
               </p>
             </div>
 
@@ -218,7 +220,7 @@ export default function EntradaMaterialPage() {
                   {material.cantidad_laminas + formData.cantidad_laminas} láminas
                 </p>
                 <p className="text-sm text-blue-700">
-                  {((material.cantidad_laminas + formData.cantidad_laminas) * LAMINA_ML).toFixed(2)} metros lineales
+                  ≈ {((material.cantidad_laminas + formData.cantidad_laminas) * LAMINA_ML).toFixed(2)} ml | {((material.cantidad_laminas + formData.cantidad_laminas) * LAMINA_M2).toFixed(2)} m²
                 </p>
               </div>
               <div className="text-right">

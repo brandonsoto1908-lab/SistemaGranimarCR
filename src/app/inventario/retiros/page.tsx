@@ -89,17 +89,103 @@ export default function RetirosPage() {
   }
 
   const handleDelete = async (retiro: Retiro) => {
-    if (!confirm(`¿Eliminar retiro de ${retiro.materiales?.nombre}?`)) return
+    if (!confirm(`¿Eliminar retiro de ${retiro.materiales?.nombre}?\n\nEsto revertirá:\n- Las láminas al inventario\n- Los sobrantes utilizados\n- Los sobrantes generados`)) return
 
     try {
-      const { error } = await supabase
+      // PASO 1: Obtener información del material actual
+      const { data: materialData, error: materialError } = await supabase
+        .from('materiales')
+        .select('cantidad_laminas')
+        .eq('id', retiro.material_id)
+        .single()
+
+      if (materialError) throw materialError
+
+      // PASO 2: Revertir las láminas al inventario
+      const nuevaCantidad = materialData.cantidad_laminas + retiro.cantidad_laminas
+      const { error: updateError } = await supabase
+        .from('materiales')
+        .update({ cantidad_laminas: nuevaCantidad })
+        .eq('id', retiro.material_id)
+
+      if (updateError) throw updateError
+
+      // PASO 3: Buscar sobrantes generados por este retiro y eliminarlos
+      const { error: deleteSobrosGeneradosError } = await supabase
+        .from('sobros')
+        .delete()
+        .eq('retiro_origen_id', retiro.id)
+
+      if (deleteSobrosGeneradosError) throw deleteSobrosGeneradosError
+
+      // PASO 4: Si el retiro usó sobrantes, buscarlos y revertirlos
+      if (retiro.uso_sobrantes && retiro.tipo_retiro === 'metros_lineales') {
+        // Buscar sobrantes marcados como usados que incluyan este proyecto en las notas
+        const { data: sobrosUsados, error: sobrosUsadosError } = await supabase
+          .from('sobros')
+          .select('*')
+          .eq('material_id', retiro.material_id)
+          .eq('usado', true)
+          .ilike('notas', `%${retiro.proyecto}%`)
+
+        if (sobrosUsadosError) throw sobrosUsadosError
+
+        // Revertir cada sobrante usado
+        if (sobrosUsados && sobrosUsados.length > 0) {
+          for (const sobro of sobrosUsados) {
+            // Buscar si existe un sobrante unificado aprovechable para este material
+            const { data: sobroUnificado, error: sobroUnificadoError } = await supabase
+              .from('sobros')
+              .select('*')
+              .eq('material_id', retiro.material_id)
+              .eq('usado', false)
+              .eq('aprovechable', true)
+              .eq('notas', 'Sobrantes generales unificados')
+              .single()
+
+            if (sobroUnificadoError && sobroUnificadoError.code !== 'PGRST116') {
+              throw sobroUnificadoError
+            }
+
+            if (sobroUnificado) {
+              // Si existe, sumar los metros del sobrante usado al unificado
+              const nuevosMetros = sobroUnificado.metros_lineales + sobro.metros_lineales
+              await supabase
+                .from('sobros')
+                .update({ metros_lineales: nuevosMetros })
+                .eq('id', sobroUnificado.id)
+            } else {
+              // Si no existe, crear uno nuevo con los metros del sobrante usado
+              await supabase
+                .from('sobros')
+                .insert([{
+                  material_id: retiro.material_id,
+                  metros_lineales: sobro.metros_lineales,
+                  proyecto_origen: 'General',
+                  notas: 'Sobrantes generales unificados',
+                  usado: false,
+                  aprovechable: true
+                }])
+            }
+
+            // Eliminar el sobrante usado
+            await supabase
+              .from('sobros')
+              .delete()
+              .eq('id', sobro.id)
+          }
+        }
+      }
+
+      // PASO 5: Eliminar el retiro
+      const { error: deleteRetiroError } = await supabase
         .from('retiros')
         .delete()
         .eq('id', retiro.id)
 
-      if (error) throw error
+      if (deleteRetiroError) throw deleteRetiroError
 
-      toast.success('Retiro eliminado')
+      toast.success('Retiro eliminado y cantidades revertidas')
       fetchRetiros()
     } catch (error: any) {
       console.error('Error deleting retiro:', error)
