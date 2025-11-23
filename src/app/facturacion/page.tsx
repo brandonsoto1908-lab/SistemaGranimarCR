@@ -4,7 +4,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatNumber } from '@/lib/utils'
+import { generarPDFFactura, generarPDFReportePeriodo } from '@/lib/pdfGenerator'
 import Link from 'next/link'
+import toast from 'react-hot-toast'
 import { 
   Plus, 
   FileText, 
@@ -144,6 +146,64 @@ export default function FacturacionPage() {
     }
   }
 
+  const handleDescargarPDF = async (factura: Factura) => {
+    try {
+      // Cargar los pagos de esta factura
+      const { data: pagos, error } = await supabase
+        .from('pagos')
+        .select('*')
+        .eq('factura_id', factura.id)
+        .order('fecha_pago', { ascending: false })
+
+      if (error) throw error
+
+      generarPDFFactura(factura, pagos || [])
+      toast.success('PDF descargado correctamente')
+    } catch (error) {
+      console.error('Error generando PDF:', error)
+      toast.error('Error al generar el PDF')
+    }
+  }
+
+  const handleDescargarReportePeriodo = () => {
+    try {
+      const ahora = new Date()
+      let fechaInicio: Date
+      let fechaFin = ahora
+      let nombrePeriodo = ''
+
+      if (filtroPeriodo === 'semana') {
+        fechaInicio = new Date(ahora)
+        fechaInicio.setDate(ahora.getDate() - 7)
+        nombrePeriodo = 'Última Semana'
+      } else if (filtroPeriodo === 'quincena') {
+        fechaInicio = new Date(ahora)
+        fechaInicio.setDate(ahora.getDate() - 15)
+        nombrePeriodo = 'Última Quincena'
+      } else if (filtroPeriodo === 'mes') {
+        fechaInicio = new Date(ahora)
+        fechaInicio.setMonth(ahora.getMonth() - 1)
+        nombrePeriodo = 'Último Mes'
+      } else {
+        // Todos - últimos 12 meses
+        fechaInicio = new Date(ahora)
+        fechaInicio.setMonth(ahora.getMonth() - 12)
+        nombrePeriodo = 'Últimos 12 Meses'
+      }
+
+      generarPDFReportePeriodo(
+        facturas,
+        nombrePeriodo,
+        fechaInicio.toISOString().split('T')[0],
+        fechaFin.toISOString().split('T')[0]
+      )
+      toast.success('Reporte PDF descargado correctamente')
+    } catch (error) {
+      console.error('Error generando reporte PDF:', error)
+      toast.error('Error al generar el reporte PDF')
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -162,10 +222,24 @@ export default function FacturacionPage() {
             Gestión de facturas, pagos y abonos por proyecto
           </p>
         </div>
-        <Link href="/facturacion/nueva" className="btn btn-primary">
-          <Plus className="w-5 h-5" />
-          Nueva Factura
-        </Link>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleDescargarReportePeriodo}
+            className="btn btn-secondary"
+            title="Descargar reporte del período seleccionado"
+          >
+            <Download className="w-5 h-5" />
+            Reporte PDF
+          </button>
+          <Link href="/facturacion/generar-desde-retiros" className="btn btn-success">
+            <FileText className="w-5 h-5" />
+            Generar desde Retiros
+          </Link>
+          <Link href="/facturacion/nueva" className="btn btn-primary">
+            <Plus className="w-5 h-5" />
+            Nueva Factura
+          </Link>
+        </div>
       </div>
 
       {/* Estadísticas */}
@@ -363,6 +437,13 @@ export default function FacturacionPage() {
                               Pagar
                             </Link>
                           )}
+                          <button
+                            onClick={() => handleDescargarPDF(factura)}
+                            className="btn btn-sm btn-secondary"
+                            title="Descargar PDF"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>

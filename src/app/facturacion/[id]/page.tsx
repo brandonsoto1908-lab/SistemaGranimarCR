@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatNumber } from '@/lib/utils'
+import { generarPDFFactura } from '@/lib/pdfGenerator'
 import toast from 'react-hot-toast'
 import { 
   ArrowLeft, 
@@ -95,6 +96,18 @@ export default function DetalleFacturaPage() {
     }
   }
 
+  const handleDescargarPDF = () => {
+    if (!factura) return
+    
+    try {
+      generarPDFFactura(factura, pagos)
+      toast.success('PDF descargado correctamente')
+    } catch (error) {
+      console.error('Error generando PDF:', error)
+      toast.error('Error al generar el PDF')
+    }
+  }
+
   const getEstadoInfo = (estado: string) => {
     switch (estado) {
       case 'pagado':
@@ -165,7 +178,7 @@ export default function DetalleFacturaPage() {
           <h1 className="page-title">Factura #{factura.id.slice(0, 8)}</h1>
           <p className="page-subtitle">{factura.proyecto}</p>
         </div>
-        <button className="btn btn-secondary">
+        <button onClick={handleDescargarPDF} className="btn btn-secondary">
           <Download className="w-5 h-5" />
           Descargar PDF
         </button>

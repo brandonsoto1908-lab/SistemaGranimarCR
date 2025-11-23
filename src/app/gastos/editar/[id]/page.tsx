@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getMonthYear, getDateInputValue } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -14,9 +14,12 @@ interface Proveedor {
   nombre: string
 }
 
-export default function NuevoGastoPage() {
+export default function EditarGastoPage() {
   const router = useRouter()
+  const params = useParams()
+  const id = params?.id as string
   const [loading, setLoading] = useState(false)
+  const [loadingData, setLoadingData] = useState(true)
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [formData, setFormData] = useState({
     concepto: '',
@@ -31,7 +34,10 @@ export default function NuevoGastoPage() {
 
   useEffect(() => {
     fetchProveedores()
-  }, [])
+    if (id) {
+      fetchGasto()
+    }
+  }, [id])
 
   const fetchProveedores = async () => {
     try {
@@ -44,6 +50,36 @@ export default function NuevoGastoPage() {
       setProveedores(data || [])
     } catch (error) {
       console.error('Error fetching proveedores:', error)
+    }
+  }
+
+  const fetchGasto = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('gastos')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (error) throw error
+
+      if (data) {
+        setFormData({
+          concepto: data.concepto || '',
+          categoria: data.categoria || '',
+          monto: data.monto || 0,
+          moneda: data.moneda || 'CRC',
+          es_fijo: data.es_fijo || false,
+          fecha: data.fecha || getDateInputValue(),
+          proveedor_id: data.proveedor_id || '',
+          notas: data.notas || '',
+        })
+      }
+    } catch (error: any) {
+      console.error('Error fetching gasto:', error)
+      toast.error('Error al cargar gasto')
+    } finally {
+      setLoadingData(false)
     }
   }
 
@@ -76,20 +112,21 @@ export default function NuevoGastoPage() {
       
       const { error } = await supabase
         .from('gastos')
-        .insert([{
+        .update({
           ...formData,
           mes,
           anio,
           proveedor_id: formData.proveedor_id || null,
-        }] as any)
+        })
+        .eq('id', id)
 
       if (error) throw error
 
-      toast.success('Gasto registrado exitosamente')
+      toast.success('Gasto actualizado exitosamente')
       router.push('/gastos')
     } catch (error: any) {
-      console.error('Error creating gasto:', error)
-      toast.error('Error al crear gasto: ' + error.message)
+      console.error('Error updating gasto:', error)
+      toast.error('Error al actualizar gasto: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -107,6 +144,14 @@ export default function NuevoGastoPage() {
     }))
   }
 
+  if (loadingData) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="spinner spinner-lg"></div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
@@ -115,8 +160,8 @@ export default function NuevoGastoPage() {
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="page-title">Nuevo Gasto</h1>
-          <p className="page-subtitle">Registrar gasto operativo</p>
+          <h1 className="page-title">Editar Gasto</h1>
+          <p className="page-subtitle">Modificar información del gasto</p>
         </div>
       </div>
 
@@ -274,12 +319,12 @@ export default function NuevoGastoPage() {
             {loading ? (
               <>
                 <div className="spinner spinner-sm"></div>
-                Guardando...
+                Actualizando...
               </>
             ) : (
               <>
                 <Save className="w-5 h-5" />
-                Guardar Gasto
+                Guardar Cambios
               </>
             )}
           </button>

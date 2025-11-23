@@ -33,6 +33,19 @@ export default function DiscosPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingDisco, setEditingDisco] = useState<Disco | null>(null)
   const [uploadingImages, setUploadingImages] = useState(false)
+  const [categorias, setCategorias] = useState<string[]>([
+    'Piedra de devastar',
+    'Disco de pulir',
+    'Disco curvo',
+    'Disco de corte',
+    'Juego de discos',
+    'Felpa',
+    'Broca',
+    'Broca especial',
+    'Accesorio'
+  ])
+  const [showAgregarCategoria, setShowAgregarCategoria] = useState(false)
+  const [nuevaCategoria, setNuevaCategoria] = useState('')
   const [formData, setFormData] = useState({
     nombre: '',
     tipo: 'Disco de pulir',
@@ -44,7 +57,58 @@ export default function DiscosPage() {
 
   useEffect(() => {
     fetchDiscos()
+    cargarCategoriasGuardadas()
   }, [filterTipo, filterMaterial])
+
+  const cargarCategoriasGuardadas = () => {
+    const categoriasGuardadas = localStorage.getItem('herramientas_categorias')
+    if (categoriasGuardadas) {
+      try {
+        const categoriasParsed = JSON.parse(categoriasGuardadas)
+        setCategorias(prev => {
+          const todasCategorias = [...prev, ...categoriasParsed]
+          return [...new Set(todasCategorias)] // Eliminar duplicados
+        })
+      } catch (error) {
+        console.error('Error cargando categorías:', error)
+      }
+    }
+  }
+
+  const agregarNuevaCategoria = () => {
+    if (!nuevaCategoria.trim()) {
+      toast.error('Ingresa un nombre para la categoría')
+      return
+    }
+
+    if (categorias.includes(nuevaCategoria.trim())) {
+      toast.error('Esta categoría ya existe')
+      return
+    }
+
+    const nuevasCategorias = [...categorias, nuevaCategoria.trim()]
+    setCategorias(nuevasCategorias)
+    
+    // Guardar solo las categorías personalizadas
+    const categoriasBase = [
+      'Piedra de devastar',
+      'Disco de pulir',
+      'Disco curvo',
+      'Disco de corte',
+      'Juego de discos',
+      'Felpa',
+      'Broca',
+      'Broca especial',
+      'Accesorio'
+    ]
+    const categoriasPersonalizadas = nuevasCategorias.filter(c => !categoriasBase.includes(c))
+    localStorage.setItem('herramientas_categorias', JSON.stringify(categoriasPersonalizadas))
+    
+    setFormData({ ...formData, tipo: nuevaCategoria.trim() })
+    setNuevaCategoria('')
+    setShowAgregarCategoria(false)
+    toast.success('Categoría agregada correctamente')
+  }
 
   const fetchDiscos = async () => {
     try {
@@ -466,22 +530,63 @@ export default function DiscosPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="label label-required">Tipo de Herramienta</label>
-                    <select
-                      value={formData.tipo}
-                      onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
-                      className="input"
-                      required
-                    >
-                      <option value="Piedra de devastar">Piedra de devastar</option>
-                      <option value="Disco de pulir">Disco de pulir</option>
-                      <option value="Disco curvo">Disco curvo</option>
-                      <option value="Disco de corte">Disco de corte</option>
-                      <option value="Juego de discos">Juego de discos</option>
-                      <option value="Felpa">Felpa</option>
-                      <option value="Broca">Broca</option>
-                      <option value="Broca especial">Broca especial</option>
-                      <option value="Accesorio">Accesorio</option>
-                    </select>
+                    {!showAgregarCategoria ? (
+                      <div className="flex gap-2">
+                        <select
+                          value={formData.tipo}
+                          onChange={(e) => {
+                            if (e.target.value === '__nueva__') {
+                              setShowAgregarCategoria(true)
+                            } else {
+                              setFormData({ ...formData, tipo: e.target.value })
+                            }
+                          }}
+                          className="input flex-1"
+                          required
+                        >
+                          {categorias.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                          <option value="__nueva__">+ Agregar nueva categoría</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={nuevaCategoria}
+                            onChange={(e) => setNuevaCategoria(e.target.value)}
+                            placeholder="Nombre de la nueva categoría"
+                            className="input flex-1"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                agregarNuevaCategoria()
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={agregarNuevaCategoria}
+                            className="btn btn-sm btn-success"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAgregarCategoria(false)
+                              setNuevaCategoria('')
+                            }}
+                            className="btn btn-sm btn-secondary"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500">Presiona Enter o haz clic en + para agregar</p>
+                      </div>
+                    )}
                   </div>
 
                   <div>
