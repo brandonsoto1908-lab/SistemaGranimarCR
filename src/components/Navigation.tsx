@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Package,
@@ -76,6 +76,7 @@ export default function Navigation() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Inventario'])
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null)
 
   const toggleExpanded = (label: string) => {
     setExpandedItems((prev) =>
@@ -137,6 +138,27 @@ export default function Navigation() {
     )
   }
 
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/auth/status')
+        if (!mounted) return
+        if (res.ok) {
+          const data = await res.json()
+          setAuthenticated(!!data.authenticated)
+        } else {
+          setAuthenticated(false)
+        }
+      } catch (err) {
+        setAuthenticated(false)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   return (
     <>
       {/* Mobile Menu Button */}
@@ -181,10 +203,32 @@ export default function Navigation() {
 
           {/* Footer */}
           <div className="p-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500 text-center">
-              © 2025 Granimar CR
-              <br />
-              v1.0.0
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-gray-500">
+                © 2025 Granimar CR
+                <br />
+                v1.0.0
+              </div>
+              <div>
+                {authenticated === null ? null : authenticated ? (
+                  <form
+                    action="/api/logout"
+                    method="post"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      fetch('/api/logout', { method: 'POST' }).then(() => {
+                        window.location.href = '/login'
+                      })
+                    }}
+                  >
+                    <button className="btn btn-ghost btn-sm">Cerrar sesión</button>
+                  </form>
+                ) : (
+                  <a href="/login" className="btn btn-ghost btn-sm">
+                    Iniciar sesión
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
