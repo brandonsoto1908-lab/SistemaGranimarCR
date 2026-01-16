@@ -39,8 +39,9 @@ export default function InventarioPage() {
   
   // Constantes de conversión
   const LAMINA_LARGO = 3.22 // metros
-  const LAMINA_ANCHO = 1.60 // metros
-  const LAMINA_M2 = LAMINA_LARGO * LAMINA_ANCHO // 5.152 m²
+  // Usar ancho real de lámina: 1.59m → 3.22 * 1.59 ≈ 5.12 m² (mitad ≈ 2.56 m²)
+  const LAMINA_ANCHO = 1.59 // metros
+  const LAMINA_M2 = LAMINA_LARGO * LAMINA_ANCHO // ≈ 5.12 m²
   // Una lámina puede generar mínimo 2 cortes de 60cm de ancho (aproximado)
   const LAMINA_ML = 6.44 // metros lineales por lámina (mínimo 2 cortes)
 

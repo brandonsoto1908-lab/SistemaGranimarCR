@@ -17,10 +17,13 @@ import StockAlertBanner from '@/components/StockAlertBanner'
 // Una lámina de 3.22m × 1.59m puede generar mínimo 2 cortes de 60cm de ancho
 // = 6.44 metros lineales por lámina (aproximado)
 const LAMINA_ML = 6.44 // Metros lineales por lámina (mínimo 2 cortes)
+// Área por lámina: 3.22m × 1.59m ≈ 5.12 m²
+const LAMINA_M2 = 3.22 * 1.59
 
 interface DashboardStats {
   inventarioTotal: number
   inventarioVenta: number
+  inventarioVentaConSobrantes: number
   inventarioVentaLineal: number
   valorSobrantes: number
   gastosmes: number
@@ -40,6 +43,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     inventarioTotal: 0,
     inventarioVenta: 0,
+    inventarioVentaConSobrantes: 0,
     inventarioVentaLineal: 0,
     valorSobrantes: 0,
     gastosmes: 0,
@@ -48,6 +52,7 @@ export default function DashboardPage() {
   })
   const [materialesBajoStock, setMaterialesBajoStock] = useState<MaterialBajoStock[]>([])
   const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
     fetchDashboardData()
@@ -111,12 +116,17 @@ export default function DashboardPage() {
 
       // Calcular valor de sobrantes (m² * precio_por_metro)
       let totalSobrantes = 0
+      // Mapear sobrantes por material para usar más abajo
+      const sobrantesPorMaterial: Record<string, number> = {}
       if (sobros && sobros.length > 0) {
         for (const sobro of sobros) {
           const material = materiales?.find(m => m.id === sobro.material_id)
           if (material && material.precio_por_metro) {
             totalSobrantes += sobro.metros_lineales * material.precio_por_metro
           }
+
+          // Acumular metros (m²) por material para cálculo de láminas fraccionadas
+          sobrantesPorMaterial[sobro.material_id] = (sobrantesPorMaterial[sobro.material_id] || 0) + (sobro.metros_lineales || 0)
         }
       }
 
@@ -145,6 +155,11 @@ export default function DashboardPage() {
       setStats({
         inventarioTotal: totalInventario,
         inventarioVenta: totalInventarioVenta,
+        inventarioVentaConSobrantes: (materiales || []).reduce((sum, m) => {
+          const sobrantesM2 = sobrantesPorMaterial[m.id] || 0
+          const laminasEquivalentes = (m.cantidad_laminas || 0) + (sobrantesM2 / LAMINA_M2)
+          return sum + (laminasEquivalentes * (m.precio_venta || 0))
+        }, 0),
         inventarioVentaLineal: totalInventarioVentaLineal,
         valorSobrantes: totalSobrantes,
         gastosmes: totalGastos,
@@ -153,6 +168,7 @@ export default function DashboardPage() {
       })
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
+      setErrorMsg(error?.message || String(error))
     } finally {
       setLoading(false)
     }
@@ -212,6 +228,27 @@ export default function DashboardPage() {
           <div className="mt-3 pt-3 border-t border-green-200">
             <p className="text-xs text-green-700 font-semibold">
               Ganancia: {formatCurrency(stats.inventarioVenta - stats.inventarioTotal)}
+            </p>
+          </div>
+        </div>
+
+        {/* Venta con sobrantes como láminas fraccionadas */}
+        <div className="stat-card border-2 border-green-300 bg-green-25">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="stat-label text-green-800">💰 Venta (incluye sobrantes)</p>
+              <p className="stat-value text-green-700">{formatCurrency(stats.inventarioVentaConSobrantes)}</p>
+              <p className="text-xs text-green-600 mt-1 font-medium">
+                Trata sobrantes como fracciones de lámina (p. ej. 2.56 m² = 0.5 lámina)
+              </p>
+            </div>
+            <div className="p-3 bg-green-200 rounded-lg">
+              <Package className="w-6 h-6 text-green-700" />
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-green-200">
+            <p className="text-xs text-green-700 font-semibold">
+              Ganancia: {formatCurrency(stats.inventarioVentaConSobrantes - stats.inventarioTotal)}
             </p>
           </div>
         </div>
