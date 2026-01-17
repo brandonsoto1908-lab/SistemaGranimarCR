@@ -54,6 +54,7 @@ export default function NuevoRetiroPage() {
     uso_sobrantes: false,
     fecha_retiro: new Date().toISOString().split('T')[0],
   })
+  const [precioCobrado, setPrecioCobrado] = useState<number | null>(null)
 
   useEffect(() => {
     fetchMateriales()
@@ -176,6 +177,12 @@ export default function NuevoRetiroPage() {
   const totales = calcularTotales()
   const sobrantesDisponibles = sobrantes.reduce((sum, s) => sum + s.metros_lineales, 0)
 
+  useEffect(() => {
+    if (precioCobrado === null) {
+      setPrecioCobrado(totales.venta || 0)
+    }
+  }, [totales.venta])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -233,6 +240,7 @@ export default function NuevoRetiroPage() {
           descripcion: formData.descripcion || null,
           costo_total: totales.costo,
           precio_venta_total: totales.venta,
+          precio_cobrado_total: precioCobrado ?? totales.venta,
           ganancia: totales.ganancia,
           uso_sobrantes: formData.uso_sobrantes,
           fecha_retiro: new Date(formData.fecha_retiro).toISOString(),
@@ -381,6 +389,23 @@ export default function NuevoRetiroPage() {
                   <div>
                     <span className="text-blue-600">Precio lineal:</span>
                     <span className="ml-2 font-medium">{formatCurrency(selectedMaterial.precio_lineal)}/ml</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="label">Precio Cobrado (total)</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={precioCobrado ?? 0}
+                    onChange={(e) => setPrecioCobrado(parseFloat(e.target.value) || 0)}
+                    className="input"
+                  />
+                  <div className="col-span-2 text-sm text-gray-600">
+                    Ingresa el monto total que se cobrará por este retiro. Por defecto aparece el precio calculado ({formatCurrency(totales.venta)}), puedes ajustarlo si hay extras o descuentos.
                   </div>
                 </div>
               </div>

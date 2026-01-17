@@ -301,31 +301,64 @@ export interface Database {
         Row: {
           id: string
           material_id: string
-          cantidad: number
-          motivo: string | null
+          tipo_retiro: string | null
+          cantidad_laminas: number | null
+          metros_lineales: number | null
+          largo_metros: number | null
+          ancho_metros: number | null
           proyecto: string | null
-          fecha_retiro: string
+          cliente: string | null
           usuario: string | null
+          descripcion: string | null
+          costo_total: number | null
+          precio_venta_total: number | null
+          precio_cobrado_total: number | null
+          ganancia: number | null
+          uso_sobrantes: boolean | null
+          retiro_origen_id: string | null
+          fecha_retiro: string | null
           created_at: string
         }
         Insert: {
           id?: string
           material_id: string
-          cantidad: number
-          motivo?: string | null
+          tipo_retiro?: string | null
+          cantidad_laminas?: number | null
+          metros_lineales?: number | null
+          largo_metros?: number | null
+          ancho_metros?: number | null
           proyecto?: string | null
-          fecha_retiro?: string
+          cliente?: string | null
           usuario?: string | null
+          descripcion?: string | null
+          costo_total?: number | null
+          precio_venta_total?: number | null
+          precio_cobrado_total?: number | null
+          ganancia?: number | null
+          uso_sobrantes?: boolean | null
+          retiro_origen_id?: string | null
+          fecha_retiro?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           material_id?: string
-          cantidad?: number
-          motivo?: string | null
+          tipo_retiro?: string | null
+          cantidad_laminas?: number | null
+          metros_lineales?: number | null
+          largo_metros?: number | null
+          ancho_metros?: number | null
           proyecto?: string | null
-          fecha_retiro?: string
+          cliente?: string | null
           usuario?: string | null
+          descripcion?: string | null
+          costo_total?: number | null
+          precio_venta_total?: number | null
+          precio_cobrado_total?: number | null
+          ganancia?: number | null
+          uso_sobrantes?: boolean | null
+          retiro_origen_id?: string | null
+          fecha_retiro?: string | null
           created_at?: string
         }
       }

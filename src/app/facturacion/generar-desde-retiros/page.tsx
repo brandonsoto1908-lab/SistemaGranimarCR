@@ -47,11 +47,12 @@ export default function RetirosPendientesPage() {
           proyecto, 
           cliente, 
           fecha_retiro, 
-          precio_venta_total, 
+          precio_venta_total,
+          precio_cobrado_total,
           cantidad_laminas,
           materiales!retiros_material_id_fkey(nombre)
         `)
-        .gt('precio_venta_total', 0)
+        .or('precio_venta_total.gt.0,precio_cobrado_total.gt.0')
         .order('fecha_retiro', { ascending: false })
 
       if (retirosError) {
@@ -83,7 +84,8 @@ export default function RetirosPendientesPage() {
         proyecto: r.proyecto,
         cliente: r.cliente,
         fecha_retiro: r.fecha_retiro,
-        precio_venta_total: r.precio_venta_total,
+        // Preferir el precio cobrado si existe, sino el precio calculado
+        precio_venta_total: r.precio_cobrado_total ?? r.precio_venta_total,
         cantidad_laminas: r.cantidad_laminas,
         material: r.materiales?.nombre || 'N/A'
       }))
@@ -245,7 +247,7 @@ export default function RetirosPendientesPage() {
           </div>
         </div>
 
-        <div className="stat-card bg-gradient-to-br from-green-50 to-green-100">
+              <div className="stat-card bg-gradient-to-br from-green-50 to-green-100">
           <div className="stat-icon bg-green-100">
             <DollarSign className="w-6 h-6 text-green-600" />
           </div>
@@ -255,7 +257,7 @@ export default function RetirosPendientesPage() {
               {formatCurrency(
                 retiros
                   .filter(r => seleccionados.has(r.id))
-                  .reduce((sum, r) => sum + r.precio_venta_total, 0)
+                  .reduce((sum, r) => sum + (r.precio_venta_total || 0), 0)
               )}
             </p>
           </div>
