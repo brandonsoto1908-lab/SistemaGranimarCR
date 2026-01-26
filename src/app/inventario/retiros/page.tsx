@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatNumber, getMonthYear } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { Plus, Search, Filter, Trash2, Package, Calendar, User } from 'lucide-react'
+import { Plus, Search, Filter, Trash2, Package, Calendar, User, ArrowDownCircle } from 'lucide-react'
 import Link from 'next/link'
 
 interface Material {
@@ -19,9 +19,10 @@ interface Material {
 interface Retiro {
   id: string
   material_id: string
-  tipo_retiro: 'laminas_completas' | 'metros_lineales'
+  tipo_retiro: 'laminas_completas' | 'metros_lineales' | 'metros_cuadrados'
   cantidad_laminas: number
   metros_lineales: number
+  metros_cuadrados?: number
   proyecto: string
   cliente: string | null
   usuario: string
@@ -204,8 +205,12 @@ export default function RetirosPage() {
   })
 
   // Calcular totales
+  const LAMINA_ML = 3.22
+  const LAMINA_M2 = 5.12
   const totalRetiros = filteredRetiros.reduce((sum, r) => {
-    return sum + (r.tipo_retiro === 'laminas_completas' ? r.cantidad_laminas : Math.ceil(r.metros_lineales / 3.22))
+    if (r.tipo_retiro === 'laminas_completas') return sum + r.cantidad_laminas
+    if (r.tipo_retiro === 'metros_cuadrados') return sum + Math.ceil((r.metros_lineales || 0) / LAMINA_M2)
+    return sum + Math.ceil((r.metros_lineales || 0) / LAMINA_ML)
   }, 0)
   const valorTotal = filteredRetiros.reduce((sum, r) => sum + r.precio_venta_total, 0)
 
@@ -358,6 +363,7 @@ export default function RetirosPage() {
                   <th>Fecha</th>
                   <th>Material</th>
                   <th>Tipo</th>
+                  <th>Sobrantes</th>
                   <th>Cantidad</th>
                   <th>Proyecto</th>
                   <th>Usuario</th>
@@ -393,22 +399,31 @@ export default function RetirosPage() {
                       <span className={`badge ${retiro.tipo_retiro === 'laminas_completas' ? 'badge-info' : 'badge-warning'}`}>
                         {retiro.tipo_retiro === 'laminas_completas' ? 'Láminas' : 'Metros'}
                       </span>
-                      {retiro.uso_sobrantes && (
-                        <div className="text-xs text-green-600 mt-1">+ Sobrantes</div>
-                      )}
+                    </td>
+                    <td>
+                      <div className="text-sm">{retiro.uso_sobrantes ? 'Sí' : 'No'}</div>
                     </td>
                     <td>
                       {retiro.tipo_retiro === 'laminas_completas' ? (
                         <span className="font-medium text-gray-900">
                           {formatNumber(retiro.cantidad_laminas)} lám.
                         </span>
+                      ) : retiro.tipo_retiro === 'metros_cuadrados' ? (
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {formatNumber(retiro.metros_lineales)} m²
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            ({Math.ceil((retiro.metros_lineales || 0) / LAMINA_M2)} lám.)
+                          </div>
+                        </div>
                       ) : (
                         <div>
                           <div className="font-medium text-gray-900">
                             {formatNumber(retiro.metros_lineales)} ml
                           </div>
                           <div className="text-xs text-gray-500">
-                            ({Math.ceil(retiro.metros_lineales / 3.22)} lám.)
+                            ({Math.ceil((retiro.metros_lineales || 0) / LAMINA_ML)} lám.)
                           </div>
                         </div>
                       )}
@@ -429,7 +444,7 @@ export default function RetirosPage() {
                     </td>
                     <td>
                       <div className="font-medium text-gray-900">
-                        {formatCurrency(retiro.precio_venta_total)}
+                        {formatCurrency(retiro.precio_cobrado_total ?? retiro.precio_venta_total)}
                       </div>
                       <div className="text-xs text-gray-500">
                         Costo: {formatCurrency(retiro.costo_total)}
@@ -440,7 +455,10 @@ export default function RetirosPage() {
                         {formatCurrency(retiro.ganancia)}
                       </div>
                     </td>
-                    <td>
+                    <td className="flex items-center gap-2">
+                      <Link href={`/inventario/retiros/editar/${retiro.id}`} className="btn btn-sm btn-secondary" title="Editar">
+                        <ArrowDownCircle className="w-4 h-4 rotate-180" />
+                      </Link>
                       <button
                         onClick={() => handleDelete(retiro)}
                         className="btn btn-sm btn-danger"

@@ -8,6 +8,66 @@ export const formatCurrency = (value: number): string => {
   }).format(value)
 }
 
+// Formatea en CRC usando la tasa USD->CRC
+export const formatCRC = (value: number, rate?: number): string => {
+  const r = rate && rate > 0 ? rate : getUSDToCRC()
+  const crcValue = value * r
+  // Evitar el símbolo '₡' que puede no renderizar correctamente en jsPDF.
+  // Devolver prefijo 'CRC' seguido del número formateado en locale es-CR.
+  const formatted = new Intl.NumberFormat('es-CR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(crcValue)
+  // Usar el símbolo de colón '₡' y añadir '(CRC)' como fallback legible
+  return `₡ ${formatted} (CRC)`
+}
+
+// Obtener tasa USD -> CRC desde variable de entorno `NEXT_PUBLIC_USD_TO_CRC`.
+// Si no está definida, usar un valor razonable por defecto.
+export const getUSDToCRC = (): number => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_USD_TO_CRC) {
+      const parsed = parseFloat(String(process.env.NEXT_PUBLIC_USD_TO_CRC))
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 615.0 // fallback rate (puede ajustarse en entorno)
+}
+
+// Asynchronous getter that fetches a fresh USD->CRC rate (uses exchangerate.host)
+export const getUSDToCRCAsync = async (date?: string): Promise<number> => {
+  try {
+    // dynamic import to avoid circular deps in some environments
+    const mod = await import('./exchange')
+    return await mod.fetchUSDToCRC(date)
+  } catch (e) {
+    return getUSDToCRC()
+  }
+}
+
+// Formatea un monto en USD y añade entre paréntesis el equivalente en colones (CRC).
+export const formatCurrencyWithCRC = (value: number, rate?: number): string => {
+  const usd = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+
+  const r = rate && rate > 0 ? rate : getUSDToCRC()
+  const crcValue = value * r
+  const crc = new Intl.NumberFormat('es-CR', {
+    style: 'currency',
+    currency: 'CRC',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(crcValue)
+
+  return `${usd} (${crc})`
+}
+
 // Formatear números con decimales
 export const formatNumber = (value: number, decimals: number = 2): string => {
   return new Intl.NumberFormat('es-CR', {

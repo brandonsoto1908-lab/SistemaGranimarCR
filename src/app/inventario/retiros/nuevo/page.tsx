@@ -183,6 +183,10 @@ export default function NuevoRetiroPage() {
     }
   }, [totales.venta])
 
+  // Mostrar y guardar el precio de venta usando el override `precioCobrado` si existe
+  const ventaDisplay = precioCobrado != null ? precioCobrado : totales.venta
+  const gananciaDisplay = ventaDisplay - totales.costo
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -239,9 +243,13 @@ export default function NuevoRetiroPage() {
           usuario: formData.usuario,
           descripcion: formData.descripcion || null,
           costo_total: totales.costo,
-          precio_venta_total: totales.venta,
+          precio_venta_total: ventaDisplay,
           precio_cobrado_total: precioCobrado ?? totales.venta,
-          ganancia: totales.ganancia,
+          // Guardar información del material usado para facilitar facturación
+          tipo_material: selectedMaterial.nombre,
+          cantidad_material: formData.tipo_retiro === 'laminas_completas' ? formData.cantidad_laminas : (formData.tipo_retiro === 'metros_lineales' ? formData.metros_lineales : formData.metros_cuadrados),
+          unidad_material: formData.tipo_retiro === 'laminas_completas' ? 'láminas' : (formData.tipo_retiro === 'metros_lineales' ? 'ml' : 'm²'),
+          ganancia: gananciaDisplay,
           uso_sobrantes: formData.uso_sobrantes,
           fecha_retiro: new Date(formData.fecha_retiro).toISOString(),
         }])
@@ -368,6 +376,7 @@ export default function NuevoRetiroPage() {
             </div>
 
             {selectedMaterial && (
+              <>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h3 className="font-medium text-blue-900 mb-2">Información del Material</h3>
                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -409,6 +418,18 @@ export default function NuevoRetiroPage() {
                   </div>
                 </div>
               </div>
+              
+              {/* Mostrar Total Cobrado antes del resumen financiero */}
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Cobrado</p>
+                    <p className="text-xl font-bold text-green-700">{formatCurrency(precioCobrado ?? totales.venta)}</p>
+                  </div>
+                  <div className="text-sm text-gray-500">(Este valor se guardará como `precio_cobrado_total`)</div>
+                </div>
+              </div>
+              </>
             )}
           </div>
         </div>
@@ -972,7 +993,7 @@ export default function NuevoRetiroPage() {
 
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="text-sm text-blue-600 mb-1">Precio Venta</div>
-                  <div className="text-2xl font-bold text-blue-700">{formatCurrency(totales.venta)}</div>
+                  <div className="text-2xl font-bold text-blue-700">{formatCurrency(ventaDisplay)}</div>
                   {formData.tipo_retiro === 'metros_lineales' && formData.largo_metros > 0 && formData.ancho_metros > 0 && (
                     <div className="text-xs text-blue-500 mt-1">
                       ({formatNumber(formData.largo_metros)} + {formatNumber(formData.ancho_metros)}) ml × {formatCurrency(selectedMaterial?.precio_lineal || 0)}/ml
@@ -980,12 +1001,12 @@ export default function NuevoRetiroPage() {
                   )}
                 </div>
 
-                <div className={`rounded-lg p-4 ${totales.ganancia >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <div className={`text-sm mb-1 ${totales.ganancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`rounded-lg p-4 ${gananciaDisplay >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <div className={`text-sm mb-1 ${gananciaDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     Ganancia
                   </div>
-                  <div className={`text-2xl font-bold ${totales.ganancia >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {formatCurrency(totales.ganancia)}
+                  <div className={`text-2xl font-bold ${gananciaDisplay >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {formatCurrency(gananciaDisplay)}
                   </div>
                 </div>
               </div>

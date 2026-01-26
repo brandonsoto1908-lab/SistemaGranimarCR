@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { formatCurrency, formatNumber, formatCurrencyWithCRC, getUSDToCRCAsync } from '@/lib/utils'
 import { generarPDFFactura, generarPDFReportePeriodo } from '@/lib/pdfGenerator'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
@@ -32,6 +32,7 @@ interface Factura {
   fecha_factura: string
   fecha_pago_completo: string | null
   created_at: string
+  usd_to_crc_rate?: number | null
 }
 
 interface Stats {
@@ -47,6 +48,7 @@ interface Stats {
 export default function FacturacionPage() {
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [loading, setLoading] = useState(true)
+  const [usdRate, setUsdRate] = useState<number | null>(null)
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroPeriodo, setFiltroPeriodo] = useState('mes')
   const [stats, setStats] = useState<Stats>({
@@ -61,6 +63,15 @@ export default function FacturacionPage() {
 
   useEffect(() => {
     fetchFacturas()
+    // fetch latest USD->CRC rate for display
+    ;(async () => {
+      try {
+        const rate = await getUSDToCRCAsync()
+        setUsdRate(rate)
+      } catch (e) {
+        console.warn('Could not fetch USD->CRC rate:', e)
+      }
+    })()
   }, [filtroEstado, filtroPeriodo])
 
   const fetchFacturas = async () => {
@@ -157,7 +168,28 @@ export default function FacturacionPage() {
 
       if (error) throw error
 
-      generarPDFFactura(factura, pagos || [])
+      // Cargar detalles del retiro para obtener material y cantidades
+      const materialesList: { nombre: string; cantidad: number; unidad?: string }[] = []
+
+      if (factura.retiro_id) {
+        try {
+          const { data: retiroData, error: retiroError } = await supabase
+            .from('retiros')
+            .select(`cantidad_laminas, metros_lineales, material_id, materiales(nombre, unidad_medida)`)
+            .eq('id', factura.retiro_id)
+            .single()
+
+          if (!retiroError && retiroData) {
+            const cantidad = retiroData.cantidad_laminas ?? retiroData.metros_lineales ?? 0
+            const unidad = retiroData.cantidad_laminas != null ? (retiroData.cantidad_laminas === 1 ? 'lámina' : 'láminas') : (retiroData.metros_lineales != null ? 'm' : '')
+            materialesList.push({ nombre: retiroData.materiales?.nombre || 'N/A', cantidad, unidad })
+          }
+        } catch (err) {
+          console.warn('No se pudo cargar datos del retiro para materiales:', err)
+        }
+      }
+
+      await generarPDFFactura(factura, pagos || [], materialesList)
       toast.success('PDF descargado correctamente')
     } catch (error) {
       console.error('Error generando PDF:', error)
@@ -288,7 +320,7 @@ export default function FacturacionPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-label">Total Facturado</p>
-              <p className="stat-value text-blue-600">{formatCurrency(stats.totalFacturado)}</p>
+              <p className="stat-value text-blue-600">{formatCurrencyWithCRC(stats.totalFacturado, usdRate ?? undefined)}</p>
               <p className="text-xs text-gray-500 mt-1">{stats.totalFacturas} facturas</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-lg">
@@ -301,7 +333,7 @@ export default function FacturacionPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-label">Total Cobrado</p>
-              <p className="stat-value text-green-600">{formatCurrency(stats.totalCobrado)}</p>
+              <p className="stat-value text-green-600">{formatCurrencyWithCRC(stats.totalCobrado, usdRate ?? undefined)}</p>
               <p className="text-xs text-gray-500 mt-1">{stats.facturasPagadas} pagadas</p>
             </div>
             <div className="p-3 bg-green-100 rounded-lg">
@@ -314,7 +346,7 @@ export default function FacturacionPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-label">Total Pendiente</p>
-              <p className="stat-value text-red-600">{formatCurrency(stats.totalPendiente)}</p>
+              <p className="stat-value text-red-600">{formatCurrencyWithCRC(stats.totalPendiente, usdRate ?? undefined)}</p>
               <p className="text-xs text-gray-500 mt-1">{stats.facturasPendientes} pendientes</p>
             </div>
             <div className="p-3 bg-red-100 rounded-lg">
@@ -430,12 +462,12 @@ export default function FacturacionPage() {
                         </Link>
                       </td>
                       <td className="text-gray-700">{factura.cliente}</td>
-                      <td className="font-semibold">{formatCurrency(factura.monto_total)}</td>
+                      <td className="font-semibold">{formatCurrencyWithCRC(factura.monto_total, factura.usd_to_crc_rate ?? usdRate ?? undefined)}</td>
                       <td className="text-green-600 font-medium">
-                        {formatCurrency(factura.monto_pagado)}
+                        {formatCurrencyWithCRC(factura.monto_pagado, factura.usd_to_crc_rate ?? usdRate ?? undefined)}
                       </td>
                       <td className="text-red-600 font-medium">
-                        {formatCurrency(factura.monto_pendiente)}
+                        {formatCurrencyWithCRC(factura.monto_pendiente, factura.usd_to_crc_rate ?? usdRate ?? undefined)}
                       </td>
                       <td>
                         <div className="flex items-center gap-2">

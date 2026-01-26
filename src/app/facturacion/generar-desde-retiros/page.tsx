@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatCurrencyWithCRC } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { 
   ArrowLeft, 
@@ -32,6 +32,7 @@ export default function RetirosPendientesPage() {
   const [procesando, setProcesando] = useState(false)
   const [retiros, setRetiros] = useState<RetiroPendiente[]>([])
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
+  const [preciosOverrides, setPreciosOverrides] = useState<Record<string, number>>({})
 
   useEffect(() => {
     fetchRetirosPendientes()
@@ -50,6 +51,10 @@ export default function RetirosPendientesPage() {
           precio_venta_total,
           precio_cobrado_total,
           cantidad_laminas,
+          metros_lineales,
+          tipo_material,
+          cantidad_material,
+          unidad_material,
           materiales!retiros_material_id_fkey(nombre)
         `)
         .or('precio_venta_total.gt.0,precio_cobrado_total.gt.0')
@@ -87,10 +92,17 @@ export default function RetirosPendientesPage() {
         // Preferir el precio cobrado si existe, sino el precio calculado
         precio_venta_total: r.precio_cobrado_total ?? r.precio_venta_total,
         cantidad_laminas: r.cantidad_laminas,
-        material: r.materiales?.nombre || 'N/A'
+        material: (r.tipo_material ?? r.materiales?.nombre) || 'N/A',
+        cantidad_material: r.cantidad_material ?? r.cantidad_laminas ?? r.metros_lineales ?? null,
+        unidad_material: r.unidad_material || (r.cantidad_laminas ? 'láminas' : (r.metros_lineales ? 'ml' : null))
       }))
       
       const retirosSinFactura = retirosTransformados.filter(r => !idsConFactura.has(r.id))
+
+      // Inicializar overrides con el precio por defecto
+      const overrides: Record<string, number> = {}
+      (retirosSinFactura || []).forEach(r => { overrides[r.id] = r.precio_venta_total || 0 })
+      setPreciosOverrides(overrides)
 
       console.log('Total retiros:', todosRetiros?.length || 0)
       console.log('Retiros con factura:', idsConFactura.size)
@@ -133,26 +145,36 @@ export default function RetirosPendientesPage() {
 
     try {
       const retirosSeleccionados = retiros.filter(r => seleccionados.has(r.id))
+      // Permitir al usuario indicar un número de factura base (opcional)
+      const baseNumero = window.prompt('Número de factura (dejar vacío para auto)')
       const facturasCreadas = []
       const facturasError = []
 
-      for (const retiro of retirosSeleccionados) {
+      for (let idx = 0; idx < retirosSeleccionados.length; idx++) {
+        const retiro = retirosSeleccionados[idx]
         try {
           // Asegurar que el campo `cliente` no sea nulo (la tabla tiene NOT NULL)
           const clienteValor = retiro.cliente && retiro.cliente.trim() ? retiro.cliente : 'Cliente no definido'
           if (!retiro.cliente) console.warn(`Retiro ${retiro.id} sin cliente definido — usando '${clienteValor}' como fallback`)
 
+          const montoParaFactura = preciosOverrides[retiro.id] ?? retiro.precio_venta_total
+
+          const numeroFacturaToUse = baseNumero ? (retirosSeleccionados.length > 1 ? `${baseNumero}-${idx+1}` : baseNumero) : undefined
           const { data, error } = await supabase
             .from('facturacion')
             .insert({
               retiro_id: retiro.id,
               proyecto: retiro.proyecto,
               cliente: clienteValor,
-              monto_total: retiro.precio_venta_total,
+              monto_total: montoParaFactura,
               monto_pagado: 0,
               estado: 'pendiente',
               fecha_factura: new Date().toISOString().split('T')[0],
-              notas: `Factura generada automáticamente desde retiro del ${new Date(retiro.fecha_retiro).toLocaleDateString('es-CR')}`
+              notas: `Factura generada automáticamente desde retiro del ${new Date(retiro.fecha_retiro).toLocaleDateString('es-CR')}`,
+              numero_factura: numeroFacturaToUse || undefined,
+              tipo_material: retiro.material || null,
+              cantidad_material: retiro.cantidad_material ?? retiro.cantidad_laminas ?? retiro.metros_lineales ?? null,
+              unidad_material: retiro.unidad_material || (retiro.cantidad_laminas != null ? 'láminas' : (retiro.metros_lineales != null ? 'm' : null))
             })
             .select()
             .single()
@@ -254,10 +276,10 @@ export default function RetirosPendientesPage() {
           <div>
             <p className="stat-label">Total a Facturar</p>
             <p className="stat-value text-green-600">
-              {formatCurrency(
+              {formatCurrencyWithCRC(
                 retiros
                   .filter(r => seleccionados.has(r.id))
-                  .reduce((sum, r) => sum + (r.precio_venta_total || 0), 0)
+                  .reduce((sum, r) => sum + (preciosOverrides[r.id] ?? r.precio_venta_total || 0), 0)
               )}
             </p>
           </div>
@@ -347,7 +369,23 @@ export default function RetirosPendientesPage() {
                         {retiro.cantidad_laminas}
                       </td>
                       <td className="font-bold text-green-600">
-                        {formatCurrency(retiro.precio_venta_total)}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={preciosOverrides[retiro.id] ?? retiro.precio_venta_total}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              const v = parseFloat(e.target.value) || 0
+                              setPreciosOverrides(prev => ({ ...prev, [retiro.id]: v }))
+                            }}
+                            className="input input-sm w-32"
+                            title="Precio a cobrar (editable)"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="text-sm text-gray-600">{formatCurrencyWithCRC(preciosOverrides[retiro.id] ?? retiro.precio_venta_total)}</div>
+                        </div>
                       </td>
                     </tr>
                   ))}
