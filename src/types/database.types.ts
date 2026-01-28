@@ -209,6 +209,9 @@ export interface Database {
           categoria: string | null
           monto: number
           es_fijo: boolean
+          is_planilla: boolean | null
+          frecuencia_pago: string | null
+          proxima_fecha_pago: string | null
           fecha: string
           mes: number
           anio: number
@@ -222,6 +225,9 @@ export interface Database {
           categoria?: string | null
           monto: number
           es_fijo?: boolean
+          is_planilla?: boolean
+          frecuencia_pago?: string | null
+          proxima_fecha_pago?: string | null
           fecha: string
           mes: number
           anio: number
@@ -235,6 +241,9 @@ export interface Database {
           categoria?: string | null
           monto?: number
           es_fijo?: boolean
+          is_planilla?: boolean
+          frecuencia_pago?: string | null
+          proxima_fecha_pago?: string | null
           fecha?: string
           mes?: number
           anio?: number

@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { formatCurrency, formatNumber, formatCurrencyWithCRC } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { 
   ArrowLeft, 
@@ -180,7 +180,7 @@ export default function RegistrarPagoPage() {
               </div>
               <div>
                 <p className="stat-label">Monto Total</p>
-                <p className="stat-value text-gray-900">{formatCurrency(factura.monto_total)}</p>
+                <p className="stat-value text-gray-900">{formatCurrencyWithCRC(factura.monto_total)}</p>
               </div>
             </div>
             
@@ -190,7 +190,7 @@ export default function RegistrarPagoPage() {
               </div>
               <div>
                 <p className="stat-label">Monto Pagado</p>
-                <p className="stat-value text-green-600">{formatCurrency(factura.monto_pagado)}</p>
+                <p className="stat-value text-green-600">{formatCurrencyWithCRC(factura.monto_pagado)}</p>
               </div>
             </div>
             
@@ -200,7 +200,7 @@ export default function RegistrarPagoPage() {
               </div>
               <div>
                 <p className="stat-label">Monto Pendiente</p>
-                <p className="stat-value text-red-600">{formatCurrency(factura.monto_pendiente)}</p>
+                <p className="stat-value text-red-600">{formatCurrencyWithCRC(factura.monto_pendiente)}</p>
               </div>
             </div>
           </div>
@@ -278,8 +278,8 @@ export default function RegistrarPagoPage() {
                   required
                 />
               </div>
-              <p className="text-sm text-gray-600 mt-1">
-                Máximo: {formatCurrency(factura.monto_pendiente)}
+                  <p className="text-sm text-gray-600 mt-1">
+                Máximo: {formatCurrencyWithCRC(factura.monto_pendiente)}
               </p>
             </div>
 
@@ -362,7 +362,7 @@ export default function RegistrarPagoPage() {
               <div className="flex justify-between items-center pb-3 border-b border-blue-200">
                 <span className="text-gray-700">Monto a Pagar</span>
                 <span className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(formData.monto)}
+                  {formatCurrencyWithCRC(formData.monto)}
                 </span>
               </div>
               <div className="flex justify-between items-center pb-3 border-b border-blue-200">
@@ -372,7 +372,7 @@ export default function RegistrarPagoPage() {
                     ? 'text-green-600' 
                     : 'text-orange-600'
                 }`}>
-                  {formatCurrency(factura.monto_pendiente - formData.monto)}
+                  {formatCurrencyWithCRC(factura.monto_pendiente - formData.monto)}
                 </span>
               </div>
               {(factura.monto_pendiente - formData.monto) === 0 && (

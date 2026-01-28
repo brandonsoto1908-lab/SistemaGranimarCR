@@ -1,11 +1,13 @@
 // @ts-nocheck
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatCurrency as formatUSD, formatCRC, formatNumber, getUSDToCRC, getUSDToCRCAsync } from './utils'
 
 interface Factura {
   id: string
   proyecto: string
   cliente: string
+  numero_factura?: string | null
   monto_total: number
   monto_pagado: number
   monto_pendiente: number
@@ -14,6 +16,9 @@ interface Factura {
   fecha_factura: string
   fecha_pago_completo: string | null
   notas: string
+  tipo_material?: string | null
+  cantidad_material?: number | null
+  unidad_material?: string | null
 }
 
 interface Pago {
@@ -25,8 +30,39 @@ interface Pago {
   notas: string
 }
 
-export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
+export const generarPDFFactura = async (
+  factura: Factura,
+  pagos: Pago[],
+  materiales: { nombre: string; cantidad: number; unidad?: string }[] = []
+) => {
   const doc = new jsPDF()
+  // Intentar cargar una fuente TTF desde /fonts para soportar el símbolo ₡
+  let embeddedFont = false
+  const fontName = 'NotoSans'
+  try {
+    const res = await fetch('/fonts/NotoSans-Regular.ttf')
+    if (res.ok) {
+      const buffer = await res.arrayBuffer()
+      // Convertir ArrayBuffer a base64 (forma segura)
+      const bytes = new Uint8Array(buffer)
+      let binary = ''
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+      const base64 = btoa(binary)
+      ;(doc as any).addFileToVFS('NotoSans-Regular.ttf', base64)
+      ;(doc as any).addFont('NotoSans-Regular.ttf', fontName, 'normal')
+      // Establecer la fuente embebida para todo el documento
+      try {
+        (doc as any).setFont(fontName, 'normal')
+      } catch (e) {
+        // algunos builds esperan setFont en vez de setFontFamily
+        doc.setFont(fontName)
+      }
+      embeddedFont = true
+    }
+  } catch (e) {
+    // Si falla la carga, continuar con helvetica
+    embeddedFont = false
+  }
   
   // Configuración de colores
   const primaryColor: [number, number, number] = [20, 184, 166] // Teal-600
@@ -42,11 +78,11 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
   
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(24)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text('GRANIMAR CR', 20, 20)
   
   doc.setFontSize(10)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'normal')
   doc.text('Sistema de Gestión de Producción', 20, 27)
   
   // Información de la empresa (derecha)
@@ -60,13 +96,14 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
   // ========== TÍTULO DE FACTURA ==========
   doc.setTextColor(...textColor)
   doc.setFontSize(18)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text('FACTURA', 105, yPosition, { align: 'center' })
   
   yPosition += 10
   doc.setFontSize(10)
-  doc.setFont('helvetica', 'normal')
-  doc.text(`No. ${factura.id.slice(0, 8).toUpperCase()}`, 105, yPosition, { align: 'center' })
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'normal')
+  const numeroDisplay = factura.numero_factura ? String(factura.numero_factura) : factura.id.slice(0, 8).toUpperCase()
+  doc.text(`No. ${numeroDisplay}`, 105, yPosition, { align: 'center' })
   
   yPosition += 15
 
@@ -78,34 +115,44 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
   doc.rect(20, yPosition, 85, 35, 'S')
   
   doc.setFontSize(9)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.setTextColor(...textColor)
   doc.text('INFORMACIÓN DEL CLIENTE', 25, yPosition + 7)
   
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'normal')
   doc.setFontSize(8)
   doc.text('Cliente:', 25, yPosition + 15)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text(factura.cliente, 25, yPosition + 20)
   
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'normal')
   doc.text('Proyecto:', 25, yPosition + 26)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text(factura.proyecto, 25, yPosition + 31)
+  
+  // Información del material usado (si está disponible)
+  if ((factura as any).tipo_material) {
+    doc.setFont(embeddedFont ? fontName : 'helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.text('Material:', 25, yPosition + 37)
+    doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
+    const materialText = `${(factura as any).tipo_material} ${((factura as any).cantidad_material != null ? '- ' + String((factura as any).cantidad_material) + ' ' + ((factura as any).unidad_material || '') : '')}`
+    doc.text(materialText, 25, yPosition + 42)
+  }
   
   // Marco derecho - Fechas
   doc.setFillColor(...lightGray)
   doc.rect(110, yPosition, 80, 35, 'F')
   doc.rect(110, yPosition, 80, 35, 'S')
   
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.setFontSize(9)
   doc.text('INFORMACIÓN DE PAGO', 115, yPosition + 7)
   
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'normal')
   doc.setFontSize(8)
   doc.text('Fecha Factura:', 115, yPosition + 15)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text(new Date(factura.fecha_factura).toLocaleDateString('es-CR'), 115, yPosition + 20)
   
   if (factura.fecha_pago_completo) {
@@ -139,7 +186,7 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
   
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text(`ESTADO: ${estadoInfo.text} (${factura.porcentaje_pagado.toFixed(2)}%)`, 105, yPosition + 7, { align: 'center' })
   
   yPosition += 18
@@ -147,23 +194,47 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
   // ========== RESUMEN DE MONTOS ==========
   doc.setTextColor(...textColor)
   doc.setFontSize(10)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(embeddedFont ? fontName : 'helvetica', 'bold')
   doc.text('RESUMEN DE MONTOS', 20, yPosition)
   
   yPosition += 8
 
   // Tabla de montos
+  // For reliability across PDF viewers, always show CRC with readable fallback.
+  // Using the raw '₡' glyph can render incorrectly in some viewers; prefer the '(CRC)' suffix.
+  const formatCRCLocal = async (value: number, date?: string) => {
+    const rate = await getUSDToCRCAsync(date)
+    const crcValue = (value || 0) * rate
+    const formatted = new Intl.NumberFormat('es-CR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(crcValue)
+    return `${formatted} (CRC)`
+  }
+
+  // Because formatCRCLocal is async, resolve the CRC values first
+  // Use factura.fecha_factura to fetch historical rate for the invoice date
+  const fecha = factura.fecha_factura ? (new Date(factura.fecha_factura).toISOString().split('T')[0]) : undefined
+  const montoTotalCRC = await formatCRCLocal(factura.monto_total, fecha)
+  const montoPagadoCRC = await formatCRCLocal(factura.monto_pagado, fecha)
+  const montoPendienteCRC = await formatCRCLocal(factura.monto_pendiente, fecha)
+
   const montosData = [
-    ['Monto Total', formatCurrency(factura.monto_total)],
-    ['Monto Pagado', formatCurrency(factura.monto_pagado)],
-    ['Monto Pendiente', formatCurrency(factura.monto_pendiente)],
+    ['Monto Total', formatUSD(factura.monto_total), montoTotalCRC],
+    ['Monto Pagado', formatUSD(factura.monto_pagado), montoPagadoCRC],
+    ['Monto Pendiente', formatUSD(factura.monto_pendiente), montoPendienteCRC],
   ]
 
   autoTable(doc, {
     startY: yPosition,
-    head: [['Concepto', 'Monto']],
+    head: [[
+      'Concepto', 
+      'Monto $', 
+      'Monto (CRC)'
+    ]],
     body: montosData,
     theme: 'grid',
+    styles: { font: embeddedFont ? fontName : 'helvetica' },
     headStyles: {
       fillColor: primaryColor,
       textColor: [255, 255, 255],
@@ -174,8 +245,9 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
       fontSize: 9,
     },
     columnStyles: {
-      0: { cellWidth: 100 },
-      1: { cellWidth: 70, halign: 'right', fontStyle: 'bold' },
+      0: { cellWidth: 80 },
+      1: { cellWidth: 45, halign: 'right' },
+      2: { cellWidth: 45, halign: 'right', fontStyle: 'bold' },
     },
     margin: { left: 20, right: 20 },
   })
@@ -192,7 +264,8 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
 
     const pagosData = pagos.map(pago => [
       new Date(pago.fecha_pago).toLocaleDateString('es-CR'),
-      formatCurrency(pago.monto),
+      formatUSD(pago.monto),
+      formatCRCLocal(pago.monto),
       pago.tipo_pago,
       pago.referencia || '-',
       pago.notas || '-',
@@ -200,9 +273,17 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
 
     autoTable(doc, {
       startY: yPosition,
-      head: [['Fecha', 'Monto', 'Método', 'Referencia', 'Notas']],
+      head: [[
+        'Fecha',
+        'Monto $',
+        'Monto (CRC)',
+        'Método',
+        'Referencia',
+        'Notas'
+      ]],
       body: pagosData,
       theme: 'striped',
+      styles: { font: embeddedFont ? fontName : 'helvetica' },
       headStyles: {
         fillColor: primaryColor,
         textColor: [255, 255, 255],
@@ -213,17 +294,62 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
         fontSize: 8,
       },
       columnStyles: {
-        0: { cellWidth: 25 },
-        1: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 35 },
-        4: { cellWidth: 50 },
+        0: { cellWidth: 20 },
+        1: { cellWidth: 30, halign: 'right' },
+        2: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 35 },
+        5: { cellWidth: 40 },
       },
       margin: { left: 20, right: 20 },
     })
 
     yPosition = (doc as any).lastAutoTable.finalY + 10
   }
+
+    // ========== DETALLE DE MATERIALES USADOS (por sobre) ==========
+    if (materiales && materiales.length > 0) {
+      // Verificar espacio
+      if (yPosition > 240) {
+        doc.addPage()
+        yPosition = 20
+      }
+
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('DETALLE DE MATERIALES', 20, yPosition)
+
+      yPosition += 8
+
+      const materialesData = materiales.map(m => [
+        m.nombre || 'N/A',
+        typeof m.cantidad === 'number' ? formatNumber(m.cantidad, 2) : '-',
+        m.unidad || '-'
+      ])
+
+      autoTable(doc, {
+        startY: yPosition,
+        head: [['Material', 'Cantidad', 'Unidad']],
+        body: materialesData,
+        theme: 'striped',
+        styles: { font: embeddedFont ? fontName : 'helvetica' },
+        headStyles: {
+          fillColor: primaryColor,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9,
+        },
+        bodyStyles: { fontSize: 9 },
+        columnStyles: {
+          0: { cellWidth: 100 },
+          1: { cellWidth: 40, halign: 'right' },
+          2: { cellWidth: 30, halign: 'center' },
+        },
+        margin: { left: 20, right: 20 },
+      })
+
+      yPosition = (doc as any).lastAutoTable.finalY + 10
+    }
 
   // ========== NOTAS ==========
   if (factura.notas) {
@@ -271,13 +397,7 @@ export const generarPDFFactura = (factura: Factura, pagos: Pago[]) => {
   doc.save(fileName)
 }
 
-// Función auxiliar para formatear moneda
-const formatCurrency = (value: number): string => {
-  return '$' + new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-}
+// Usar `formatCurrencyWithCRC` desde `src/lib/utils.ts` para mostrar USD + CRC
 
 // Generar PDF de reporte por período
 export const generarPDFReportePeriodo = (
@@ -381,20 +501,20 @@ export const generarPDFReportePeriodo = (
   doc.setFont('helvetica', 'normal')
   doc.text('Total Facturado:', 105, yPosition + 18)
   doc.setFont('helvetica', 'bold')
-  doc.text(formatCurrency(totalFacturado), 170, yPosition + 18, { align: 'right' })
+  doc.text(formatCurrencyWithCRC(totalFacturado), 170, yPosition + 18, { align: 'right' })
   
   doc.setFont('helvetica', 'normal')
   doc.text('Total Cobrado:', 105, yPosition + 25)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(34, 197, 94)
-  doc.text(formatCurrency(totalCobrado), 170, yPosition + 25, { align: 'right' })
+  doc.text(formatCurrencyWithCRC(totalCobrado), 170, yPosition + 25, { align: 'right' })
   
   doc.setTextColor(...textColor)
   doc.setFont('helvetica', 'normal')
   doc.text('Total Pendiente:', 105, yPosition + 32)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(239, 68, 68)
-  doc.text(formatCurrency(totalPendiente), 170, yPosition + 32, { align: 'right' })
+  doc.text(formatCurrencyWithCRC(totalPendiente), 170, yPosition + 32, { align: 'right' })
   
   doc.setTextColor(...textColor)
   doc.setFont('helvetica', 'normal')
@@ -424,9 +544,9 @@ export const generarPDFReportePeriodo = (
       new Date(f.fecha_factura).toLocaleDateString('es-CR'),
       f.proyecto.substring(0, 25) + (f.proyecto.length > 25 ? '...' : ''),
       f.cliente.substring(0, 20) + (f.cliente.length > 20 ? '...' : ''),
-      formatCurrency(f.monto_total),
-      formatCurrency(f.monto_pagado),
-      formatCurrency(f.monto_pendiente),
+      formatCurrencyWithCRC(f.monto_total),
+      formatCurrencyWithCRC(f.monto_pagado),
+      formatCurrencyWithCRC(f.monto_pendiente),
       f.estado.toUpperCase(),
     ])
 
@@ -512,9 +632,9 @@ export const generarPDFReportePeriodo = (
       .map(([cliente, datos]) => [
         cliente,
         String(datos.cantidad),
-        formatCurrency(datos.total),
-        formatCurrency(datos.cobrado),
-        formatCurrency(datos.pendiente),
+        formatCurrencyWithCRC(datos.total),
+        formatCurrencyWithCRC(datos.cobrado),
+        formatCurrencyWithCRC(datos.pendiente),
         datos.total > 0 ? `${(datos.cobrado / datos.total * 100).toFixed(1)}%` : '0%',
       ])
 

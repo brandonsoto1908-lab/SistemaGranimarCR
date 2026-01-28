@@ -24,6 +24,9 @@ export default function NuevoGastoPage() {
     monto: 0,
     moneda: 'CRC',
     es_fijo: false,
+    is_planilla: false,
+    frecuencia_pago: '',
+    proxima_fecha_pago: '',
     fecha: getDateInputValue(),
     proveedor_id: '',
     notas: '',
@@ -81,6 +84,9 @@ export default function NuevoGastoPage() {
           mes,
           anio,
           proveedor_id: formData.proveedor_id || null,
+          is_planilla: formData.is_planilla || false,
+          frecuencia_pago: formData.frecuencia_pago || null,
+          proxima_fecha_pago: formData.proxima_fecha_pago || null,
         }] as any)
 
       if (error) throw error
@@ -242,6 +248,54 @@ export default function NuevoGastoPage() {
                   </p>
                 </div>
               </label>
+            </div>
+          </div>
+
+          <div className="divider"></div>
+
+          {/* Planilla (opcional) */}
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Planilla</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="is_planilla"
+                  checked={formData.is_planilla}
+                  onChange={handleChange}
+                  className="mt-1 w-4 h-4 text-teal-600"
+                />
+                <span className="font-medium">Es Planilla (pago recurrente)</span>
+              </label>
+
+              <div>
+                <label className="label">Frecuencia de pago</label>
+                <select
+                  name="frecuencia_pago"
+                  value={formData.frecuencia_pago}
+                  onChange={handleChange}
+                  className="input"
+                  disabled={!formData.is_planilla}
+                >
+                  <option value="">Seleccionar frecuencia</option>
+                  <option value="semanal">Semanal</option>
+                  <option value="quincenal">Quincenal</option>
+                  <option value="bisemanal">Bisemanal</option>
+                  <option value="mensual">Mensual</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Próxima fecha de pago</label>
+                <input
+                  type="date"
+                  name="proxima_fecha_pago"
+                  value={formData.proxima_fecha_pago}
+                  onChange={handleChange}
+                  className="input"
+                  disabled={!formData.is_planilla}
+                />
+              </div>
             </div>
           </div>
 

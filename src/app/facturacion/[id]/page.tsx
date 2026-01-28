@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { formatCurrency, formatNumber, formatCurrencyWithCRC } from '@/lib/utils'
 import { generarPDFFactura } from '@/lib/pdfGenerator'
 import toast from 'react-hot-toast'
 import { 
@@ -96,11 +96,32 @@ export default function DetalleFacturaPage() {
     }
   }
 
-  const handleDescargarPDF = () => {
+  const handleDescargarPDF = async () => {
     if (!factura) return
-    
+
     try {
-      generarPDFFactura(factura, pagos)
+      // Cargar detalles del retiro para obtener material y cantidades
+      const materialesList: { nombre: string; cantidad: number; unidad?: string }[] = []
+
+      if (factura.retiro_id) {
+        try {
+          const { data: retiroData, error: retiroError } = await supabase
+            .from('retiros')
+            .select(`cantidad_laminas, metros_lineales, material_id, materiales(nombre, unidad_medida)`)
+            .eq('id', factura.retiro_id)
+            .single()
+
+          if (!retiroError && retiroData) {
+            const cantidad = retiroData.cantidad_laminas ?? retiroData.metros_lineales ?? 0
+            const unidad = retiroData.cantidad_laminas != null ? (retiroData.cantidad_laminas === 1 ? 'lámina' : 'láminas') : (retiroData.metros_lineales != null ? 'm' : '')
+            materialesList.push({ nombre: retiroData.materiales?.nombre || 'N/A', cantidad, unidad })
+          }
+        } catch (err) {
+          console.warn('No se pudo cargar datos del retiro para materiales:', err)
+        }
+      }
+
+      await generarPDFFactura(factura, pagos, materialesList)
       toast.success('PDF descargado correctamente')
     } catch (error) {
       console.error('Error generando PDF:', error)
@@ -270,13 +291,13 @@ export default function DetalleFacturaPage() {
               <div className="flex justify-between items-center pb-3 border-b">
                 <span className="text-gray-700">Monto Total</span>
                 <span className="text-xl font-bold text-gray-900">
-                  {formatCurrency(factura.monto_total)}
+                  {formatCurrencyWithCRC(factura.monto_total)}
                 </span>
               </div>
               <div className="flex justify-between items-center pb-3 border-b">
                 <span className="text-gray-700">Monto Pagado</span>
                 <span className="text-xl font-bold text-green-600">
-                  {formatCurrency(factura.monto_pagado)}
+                  {formatCurrencyWithCRC(factura.monto_pagado)}
                 </span>
               </div>
               <div className="flex justify-between items-center pt-2">
@@ -284,7 +305,7 @@ export default function DetalleFacturaPage() {
                 <span className={`text-2xl font-bold ${
                   factura.monto_pendiente > 0 ? 'text-red-600' : 'text-green-600'
                 }`}>
-                  {formatCurrency(factura.monto_pendiente)}
+                  {formatCurrencyWithCRC(factura.monto_pendiente)}
                 </span>
               </div>
             </div>
@@ -349,7 +370,7 @@ export default function DetalleFacturaPage() {
                         </div>
                       </td>
                       <td className="font-bold text-green-600">
-                        {formatCurrency(pago.monto)}
+                        {formatCurrencyWithCRC(pago.monto)}
                       </td>
                       <td>
                         <span className="badge badge-info">
