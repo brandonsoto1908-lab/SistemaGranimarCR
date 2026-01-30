@@ -31,6 +31,8 @@ export default function AbonarPrestamoPage() {
     monto: 0,
     monto_capital: 0,
     monto_interes: 0,
+    saldo_debito: 0,
+    poliza: 0,
     moneda: 'CRC',
     tipo_pago: 'efectivo',
     referencia: '',
@@ -146,6 +148,8 @@ export default function AbonarPrestamoPage() {
           prestamo_id: id,
           ...formData,
           referencia: formData.referencia || null,
+          saldo_debito: formData.saldo_debito || null,
+          poliza: formData.poliza || null,
         }] as any)
 
       if (error) throw error
@@ -307,6 +311,35 @@ export default function AbonarPrestamoPage() {
                 <p className="text-xs text-gray-500 mt-1">
                   Parte que cubre intereses (si aplica).
                 </p>
+              </div>
+
+              <div>
+                <label className="label">Saldo Débito</label>
+                <input
+                  type="number"
+                  name="saldo_debito"
+                  value={formData.saldo_debito}
+                  onChange={handleChange}
+                  className="input"
+                  step="0.01"
+                  min="0"
+                />
+                <p className="text-xs text-gray-500 mt-1">Saldo de débito asociado (opcional).</p>
+              </div>
+
+              <div>
+                <label className="label">Póliza (monto)</label>
+                <input
+                  type="number"
+                  name="poliza"
+                  value={formData.poliza}
+                  onChange={handleChange}
+                  className="input"
+                  step="0.01"
+                  min="0"
+                  placeholder="Monto de póliza (opcional)"
+                />
+                <p className="text-xs text-gray-500 mt-1">Monto de póliza asociado al abono (opcional).</p>
               </div>
             </div>
 

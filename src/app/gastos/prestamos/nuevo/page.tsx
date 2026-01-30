@@ -25,6 +25,12 @@ export default function NuevoPrestamoPage() {
     categoria: '',
     registrar_en_gastos: false,
     notas: '',
+    // Pago inicial (opcional) - se insertará en `abonos_prestamos` si hay valores
+    initial_abono_monto_capital: 0,
+    initial_abono_monto_interes: 0,
+    initial_abono_saldo_debito: 0,
+    initial_abono_poliza: 0,
+    initial_abono_fecha: getDateInputValue(),
   })
 
   const categorias = [
@@ -81,20 +87,67 @@ export default function NuevoPrestamoPage() {
 
     setLoading(true)
     try {
-      const { error } = await supabase
+      // Insertar préstamo y obtener el id del registro creado
+      const { data: createdPrestamo, error: insertError } = await supabase
         .from('prestamos')
-        .insert([{
-          ...formData,
-          fecha_vencimiento: formData.fecha_vencimiento || null,
-        }] as any)
+        .insert([
+          {
+            concepto: formData.concepto,
+            acreedor: formData.acreedor,
+            monto_total: formData.monto_total,
+            moneda: formData.moneda,
+            tasa_interes: formData.tasa_interes,
+            plazo_meses: formData.plazo_meses,
+            cuota_mensual: formData.cuota_mensual,
+            fecha_prestamo: formData.fecha_prestamo,
+            fecha_vencimiento: formData.fecha_vencimiento || null,
+            categoria: formData.categoria || null,
+            registrar_en_gastos: formData.registrar_en_gastos,
+            notas: formData.notas || null,
+          },
+        ])
+        .select('id')
+        .single()
 
-      if (error) throw error
+      if (insertError) throw insertError
+
+      const prestamoId = createdPrestamo?.id
+
+      // Si se ingresó un pago inicial, insertarlo en abonos_prestamos
+      const hasInitialAbono = (
+        parseFloat(String(formData.initial_abono_monto_capital || 0)) > 0 ||
+        parseFloat(String(formData.initial_abono_monto_interes || 0)) > 0 ||
+        parseFloat(String(formData.initial_abono_saldo_debito || 0)) > 0 ||
+        parseFloat(String(formData.initial_abono_poliza || 0)) > 0
+      )
+
+      if (prestamoId && hasInitialAbono) {
+        const montoCapital = parseFloat(String(formData.initial_abono_monto_capital || 0))
+        const montoInteres = parseFloat(String(formData.initial_abono_monto_interes || 0))
+        const montoTotalAbono = montoCapital + montoInteres
+
+        const { error: abonoError } = await supabase
+          .from('abonos_prestamos')
+          .insert([
+            {
+              prestamo_id: prestamoId,
+              monto: montoTotalAbono,
+              monto_capital: montoCapital,
+              monto_interes: montoInteres,
+              saldo_debito: formData.initial_abono_saldo_debito || null,
+              poliza: formData.initial_abono_poliza || null,
+              fecha_abono: formData.initial_abono_fecha || null,
+            },
+          ])
+
+        if (abonoError) throw abonoError
+      }
 
       toast.success('Préstamo registrado exitosamente')
       router.push('/gastos/prestamos')
     } catch (error: any) {
       console.error('Error creating prestamo:', error)
-      toast.error('Error al crear préstamo: ' + error.message)
+      toast.error('Error al crear préstamo: ' + (error?.message || error))
     } finally {
       setLoading(false)
     }
@@ -175,6 +228,39 @@ export default function NuevoPrestamoPage() {
                 </select>
               </div>
             </div>
+
+            {/* Pago inicial opcional */}
+            <div className="mt-4">
+              <h3 className="text-sm font-medium text-gray-800">Pago inicial (opcional)</h3>
+              <p className="text-xs text-gray-500 mb-2">Si desea registrar un abono inicial al crear el préstamo, ingrese los montos aquí.</p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                <div>
+                  <label className="label">Monto a Capital ({formData.moneda === 'USD' ? '$' : '₡'})</label>
+                  <input type="number" name="initial_abono_monto_capital" value={formData.initial_abono_monto_capital} onChange={handleChange} className="input" step="0.01" min="0" />
+                </div>
+
+                <div>
+                  <label className="label">Monto a Interés ({formData.moneda === 'USD' ? '$' : '₡'})</label>
+                  <input type="number" name="initial_abono_monto_interes" value={formData.initial_abono_monto_interes} onChange={handleChange} className="input" step="0.01" min="0" />
+                </div>
+
+                <div>
+                  <label className="label">Saldo Débito ({formData.moneda === 'USD' ? '$' : '₡'})</label>
+                  <input type="number" name="initial_abono_saldo_debito" value={formData.initial_abono_saldo_debito} onChange={handleChange} className="input" step="0.01" min="0" />
+                </div>
+
+                <div>
+                  <label className="label">Póliza</label>
+                  <input type="number" name="initial_abono_poliza" value={formData.initial_abono_poliza} onChange={handleChange} className="input" step="0.01" min="0" />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="label">Fecha del Abono</label>
+                  <input type="date" name="initial_abono_fecha" value={formData.initial_abono_fecha} onChange={handleChange} className="input" />
+                </div>
+              </div>
+            </div>
+
           </div>
 
           <div className="divider"></div>

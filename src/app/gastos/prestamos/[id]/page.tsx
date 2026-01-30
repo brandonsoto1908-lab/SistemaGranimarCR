@@ -44,6 +44,8 @@ interface Abono {
   monto: number
   monto_capital: number
   monto_interes: number
+  saldo_debito?: number | null
+  poliza?: number | null
   tipo_pago: string
   referencia: string | null
   fecha_abono: string
@@ -387,6 +389,7 @@ export default function PrestamoDetallePage() {
                 <th>Tipo de Pago</th>
                 <th>Referencia</th>
                 <th>Notas</th>
+                    <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -409,11 +412,17 @@ export default function PrestamoDetallePage() {
                       <span className="text-green-600 font-medium">
                         {prestamo.moneda === 'USD' ? '$' : '₡'}{abono.monto_capital.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
+                      {abono.saldo_debito != null && (
+                        <div className="text-xs text-gray-500 mt-1">Saldo Débito: {prestamo.moneda === 'USD' ? '$' : '₡'}{abono.saldo_debito.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      )}
                     </td>
                     <td>
                       <span className="text-orange-600 font-medium">
                         {prestamo.moneda === 'USD' ? '$' : '₡'}{abono.monto_interes.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
+                      {abono.poliza != null && (
+                        <div className="text-xs text-gray-500 mt-1">Póliza: {prestamo.moneda === 'USD' ? '$' : '₡'}{abono.poliza.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      )}
                     </td>
                     <td>
                       <span className="badge badge-outline capitalize">
@@ -422,6 +431,11 @@ export default function PrestamoDetallePage() {
                     </td>
                     <td className="text-sm text-gray-600">{abono.referencia || '-'}</td>
                     <td className="text-sm text-gray-600">{abono.notas || '-'}</td>
+                    <td>
+                      <div className="flex gap-2">
+                        <Link href={`/gastos/prestamos/${id}/abono/${abono.id}/editar`} className="btn btn-sm btn-ghost text-blue-600">Editar</Link>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
