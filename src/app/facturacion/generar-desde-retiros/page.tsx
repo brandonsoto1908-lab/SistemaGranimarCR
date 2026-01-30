@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatCurrencyWithCRC } from '@/lib/utils'
+import { formatCurrencyWithCRC } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { 
   ArrowLeft, 
